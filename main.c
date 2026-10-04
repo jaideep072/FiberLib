@@ -6,11 +6,12 @@
  * FiberLib Interactive Application
  *
  * Demonstrates:
- * - User-level fibers
- * - Cooperative scheduling
+ * - User-level cooperative fibers
+ * - Cooperative Round-Robin scheduling
  * - Priority scheduling
  * - Fiber joining
  * - Multiple fiber creation
+ * - Scheduling demonstration
  * - Runtime statistics
  */
 
@@ -422,19 +423,130 @@ static void create_custom_fiber(void)
 }
 
 /* ---------------------------------------------------------
+ * Scheduling Demo Configuration
+ * --------------------------------------------------------- */
+
+typedef struct {
+    char name[32];
+    int rounds;
+} scheduling_demo_config_t;
+
+/* ---------------------------------------------------------
+ * Scheduling Demo Worker
+ * --------------------------------------------------------- */
+
+static void scheduling_demo_worker(void *arg)
+{
+    scheduling_demo_config_t *config =
+        (scheduling_demo_config_t *)arg;
+
+    printf(
+        "\n[Scheduling Demo] Fiber %s started.\n",
+        config->name
+    );
+
+    for (int i = 1; i <= config->rounds; i++) {
+
+        printf(
+            "[Scheduling Demo] Fiber %s -> Round %d/%d\n",
+            config->name,
+            i,
+            config->rounds
+        );
+
+        fiber_yield();
+    }
+
+    printf(
+        "[Scheduling Demo] Fiber %s completed.\n",
+        config->name
+    );
+}
+
+/* ---------------------------------------------------------
  * Scheduling Demo
  * --------------------------------------------------------- */
 
 static void scheduling_demo(void)
 {
+    scheduling_demo_config_t configs[3];
+    fiber_id_t fiber_ids[3];
+
     printf("\n");
     printf("===============================================\n");
     printf("             Scheduling Demo\n");
     printf("===============================================\n");
 
     printf(
-        "[Demo] Scheduling demonstration will be implemented next.\n"
+        "[Demo] This demonstration shows cooperative scheduling.\n"
     );
+
+    printf(
+        "[Demo] Each fiber performs work and voluntarily yields.\n"
+    );
+
+    printf(
+        "[Demo] Watch how execution moves between fibers.\n\n"
+    );
+
+    if (fiber_library_init() != 0) {
+        printf(
+            "[Demo] Failed to initialize FiberLib.\n"
+        );
+
+        return;
+    }
+
+    strcpy(configs[0].name, "A");
+    configs[0].rounds = 4;
+
+    strcpy(configs[1].name, "B");
+    configs[1].rounds = 4;
+
+    strcpy(configs[2].name, "C");
+    configs[2].rounds = 4;
+
+    for (int i = 0; i < 3; i++) {
+
+        fiber_ids[i] =
+            fiber_create(
+                scheduling_demo_worker,
+                &configs[i]
+            );
+
+        if (fiber_ids[i] == 0) {
+            printf(
+                "[Demo] Failed to create scheduling fiber %d.\n",
+                i + 1
+            );
+
+            fiber_library_shutdown();
+            return;
+        }
+
+        fiber_set_priority(
+            fiber_ids[i],
+            FIBER_PRIORITY_NORMAL
+        );
+    }
+
+    printf(
+        "[Demo] Created three NORMAL-priority fibers.\n"
+    );
+
+    fiber_debug_dump();
+
+    printf("\n[Demo] Starting scheduler...\n\n");
+
+    fiber_schedule();
+
+    printf(
+        "\n[Demo] Scheduling demonstration completed.\n"
+    );
+
+    fiber_stats_dump();
+
+    fiber_library_shutdown();
 }
 
 /* ---------------------------------------------------------
@@ -491,7 +603,8 @@ static void show_features(void)
     printf("9. Runtime scheduling statistics\n");
     printf("10. Debug state inspection\n");
     printf("11. Multiple fiber creation\n");
-    printf("12. Interactive application interface\n");
+    printf("12. Interactive scheduling demonstration\n");
+    printf("13. Interactive application interface\n");
 }
 
 /* ---------------------------------------------------------
