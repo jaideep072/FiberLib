@@ -1,14 +1,38 @@
-#include "include/fiber.h"
+#include "../include/fiber.h"
 #include <stdio.h>
 #include <string.h>
 
+/*
+ * FiberLib Interactive Application
+ *
+ * Demonstrates:
+ * - User-level fibers
+ * - Cooperative scheduling
+ * - Priority scheduling
+ * - Fiber joining
+ * - Multiple fiber creation
+ * - Runtime statistics
+ */
+
+/* ---------------------------------------------------------
+ * Application Fiber IDs
+ * --------------------------------------------------------- */
+
 static fiber_id_t network_monitor_id;
+
+/* ---------------------------------------------------------
+ * Custom Fiber Configuration
+ * --------------------------------------------------------- */
 
 typedef struct {
     char name[64];
     int steps;
     int verbose;
 } custom_fiber_config_t;
+
+/* ---------------------------------------------------------
+ * FiberLib Application Demo
+ * --------------------------------------------------------- */
 
 static void network_monitor(void *arg)
 {
@@ -54,7 +78,7 @@ static void report_generator(void *arg)
 
     if (fiber_join(network_monitor_id) != 0) {
         printf(
-            "[Report Generator] Failed to join network monitor.\n"
+            "[Report Generator] Failed to wait for network monitor.\n"
         );
 
         return;
@@ -79,6 +103,78 @@ static void report_generator(void *arg)
 
     printf("[Report Generator] Final report generated.\n");
 }
+
+static void run_application(void)
+{
+    printf("\n");
+    printf("===============================================\n");
+    printf("            FiberLib Application\n");
+    printf("===============================================\n");
+
+    if (fiber_library_init() != 0) {
+        printf(
+            "[Application] Failed to initialize FiberLib.\n"
+        );
+
+        return;
+    }
+
+    network_monitor_id =
+        fiber_create(network_monitor, NULL);
+
+    fiber_id_t log_collector_id =
+        fiber_create(log_collector, NULL);
+
+    fiber_id_t report_generator_id =
+        fiber_create(report_generator, NULL);
+
+    if (network_monitor_id == 0 ||
+        log_collector_id == 0 ||
+        report_generator_id == 0) {
+
+        printf(
+            "[Application] Failed to create application fibers.\n"
+        );
+
+        fiber_library_shutdown();
+        return;
+    }
+
+    fiber_set_priority(
+        network_monitor_id,
+        FIBER_PRIORITY_HIGH
+    );
+
+    fiber_set_priority(
+        log_collector_id,
+        FIBER_PRIORITY_NORMAL
+    );
+
+    fiber_set_priority(
+        report_generator_id,
+        FIBER_PRIORITY_HIGH
+    );
+
+    printf("\n[Application] Application fibers created.\n");
+
+    fiber_debug_dump();
+
+    printf("\n[Application] Starting scheduler...\n\n");
+
+    fiber_schedule();
+
+    printf(
+        "\n[Application] All application tasks completed.\n"
+    );
+
+    fiber_stats_dump();
+
+    fiber_library_shutdown();
+}
+
+/* ---------------------------------------------------------
+ * Custom Fiber
+ * --------------------------------------------------------- */
 
 static void custom_worker(void *arg)
 {
@@ -131,127 +227,36 @@ static void custom_worker(void *arg)
     );
 }
 
-static void run_application(void)
+/* ---------------------------------------------------------
+ * Read Custom Fiber Configuration
+ * --------------------------------------------------------- */
+
+static int read_custom_fiber_config(
+    custom_fiber_config_t *config,
+    int *priority_choice)
 {
-    fiber_id_t log_collector_id;
-    fiber_id_t report_generator_id;
-
-    printf("\n");
-    printf("===============================================\n");
-    printf("              FiberLib Application\n");
-    printf("       User-Level Thread Demonstration\n");
-    printf("===============================================\n");
-
-    printf("\n[Application] Initializing FiberLib...\n");
-
-    if (fiber_library_init() != 0) {
-        printf("[Application] Initialization failed.\n");
-        return;
-    }
-
-    network_monitor_id =
-        fiber_create(network_monitor, NULL);
-
-    log_collector_id =
-        fiber_create(log_collector, NULL);
-
-    report_generator_id =
-        fiber_create(report_generator, NULL);
-
-    if (network_monitor_id == 0 ||
-        log_collector_id == 0 ||
-        report_generator_id == 0) {
-
-        printf("[Application] Fiber creation failed.\n");
-
-        fiber_library_shutdown();
-        return;
-    }
-
-    fiber_set_priority(
-        network_monitor_id,
-        FIBER_PRIORITY_HIGH
-    );
-
-    fiber_set_priority(
-        report_generator_id,
-        FIBER_PRIORITY_HIGH
-    );
-
-    fiber_set_priority(
-        log_collector_id,
-        FIBER_PRIORITY_NORMAL
-    );
-
-    printf("\n[Application] Three application tasks created.\n");
-    printf("[Application] Priorities assigned:\n");
-    printf("  Network Monitor  : HIGH\n");
-    printf("  Report Generator : HIGH\n");
-    printf("  Log Collector    : NORMAL\n");
-
-    printf("\n[Application] Initial Fiber State:\n");
-
-    fiber_debug_dump();
-
-    printf("\n[Application] Starting user-level scheduler...\n");
-
-    fiber_schedule();
-
-    printf("\n[Application] All tasks completed.\n");
-
-    fiber_stats_dump();
-
-    fiber_library_shutdown();
-
-    printf("\n===============================================\n");
-    printf("          FiberLib Application Complete\n");
-    printf("===============================================\n");
-}
-
-static void create_custom_fiber(void)
-{
-    custom_fiber_config_t config;
-    int priority_choice;
     int verbose_choice;
 
-    memset(&config, 0, sizeof(config));
-
-    printf("\n");
-    printf("===============================================\n");
-    printf("              Create Custom Fiber\n");
-    printf("===============================================\n");
+    memset(config, 0, sizeof(*config));
 
     printf("Enter fiber name: ");
 
-    if (scanf("%63s", config.name) != 1) {
+    if (scanf("%63s", config->name) != 1) {
         printf("[Application] Invalid fiber name.\n");
-
-        int ch;
-
-        while ((ch = getchar()) != '\n' && ch != EOF) {
-            /* Clear invalid input. */
-        }
-
-        return;
+        return -1;
     }
 
     printf("Enter number of work steps (1-10): ");
 
-    if (scanf("%d", &config.steps) != 1) {
-        printf("[Application] Invalid input.\n");
+    if (scanf("%d", &config->steps) != 1 ||
+        config->steps < 1 ||
+        config->steps > 10) {
 
-        int ch;
+        printf(
+            "[Application] Invalid number of work steps.\n"
+        );
 
-        while ((ch = getchar()) != '\n' && ch != EOF) {
-            /* Clear invalid input. */
-        }
-
-        return;
-    }
-
-    if (config.steps < 1 || config.steps > 10) {
-        printf("[Application] Steps must be between 1 and 10.\n");
-        return;
+        return -1;
     }
 
     printf("\nSelect priority:\n");
@@ -260,21 +265,12 @@ static void create_custom_fiber(void)
     printf("3. HIGH\n");
     printf("Enter priority: ");
 
-    if (scanf("%d", &priority_choice) != 1) {
-        printf("[Application] Invalid input.\n");
+    if (scanf("%d", priority_choice) != 1 ||
+        *priority_choice < 1 ||
+        *priority_choice > 3) {
 
-        int ch;
-
-        while ((ch = getchar()) != '\n' && ch != EOF) {
-            /* Clear invalid input. */
-        }
-
-        return;
-    }
-
-    if (priority_choice < 1 || priority_choice > 3) {
         printf("[Application] Invalid priority.\n");
-        return;
+        return -1;
     }
 
     printf("\nEnable verbose output?\n");
@@ -282,154 +278,225 @@ static void create_custom_fiber(void)
     printf("2. No\n");
     printf("Enter choice: ");
 
-    if (scanf("%d", &verbose_choice) != 1) {
-        printf("[Application] Invalid input.\n");
+    if (scanf("%d", &verbose_choice) != 1 ||
+        verbose_choice < 1 ||
+        verbose_choice > 2) {
 
-        int ch;
-
-        while ((ch = getchar()) != '\n' && ch != EOF) {
-            /* Clear invalid input. */
-        }
-
-        return;
-    }
-
-    if (verbose_choice != 1 && verbose_choice != 2) {
         printf("[Application] Invalid verbose option.\n");
+        return -1;
+    }
+
+    config->verbose = (verbose_choice == 1);
+
+    return 0;
+}
+
+/* ---------------------------------------------------------
+ * Multiple Custom Fiber Creation
+ * --------------------------------------------------------- */
+
+static void create_custom_fiber(void)
+{
+    custom_fiber_config_t configs[10];
+    fiber_id_t fiber_ids[10];
+
+    int priorities[10];
+    int fiber_count;
+
+    printf("\n");
+    printf("===============================================\n");
+    printf("          Create Multiple Custom Fibers\n");
+    printf("===============================================\n");
+
+    printf("How many fibers do you want to create? (1-10): ");
+
+    if (scanf("%d", &fiber_count) != 1 ||
+        fiber_count < 1 ||
+        fiber_count > 10) {
+
+        printf(
+            "[Application] Invalid number of fibers.\n"
+        );
+
         return;
     }
-
-    config.verbose = (verbose_choice == 1);
-
-    printf("\n[Application] Configuration:\n");
-    printf("  Fiber Name   : %s\n", config.name);
-    printf("  Work Steps   : %d\n", config.steps);
-
-    if (priority_choice == 1) {
-        printf("  Priority     : LOW\n");
-    }
-    else if (priority_choice == 2) {
-        printf("  Priority     : NORMAL\n");
-    }
-    else {
-        printf("  Priority     : HIGH\n");
-    }
-
-    printf(
-        "  Verbose Mode : %s\n",
-        config.verbose ? "ON" : "OFF"
-    );
 
     if (fiber_library_init() != 0) {
-        printf("[Application] Failed to initialize FiberLib.\n");
+        printf(
+            "[Application] Failed to initialize FiberLib.\n"
+        );
+
         return;
     }
 
-    fiber_id_t fiber_id =
-        fiber_create(custom_worker, &config);
+    for (int i = 0; i < fiber_count; i++) {
 
-    if (fiber_id == 0) {
-        printf("[Application] Failed to create custom fiber.\n");
+        printf("\n");
+        printf("-----------------------------------------------\n");
+        printf("Configure Fiber %d/%d\n", i + 1, fiber_count);
+        printf("-----------------------------------------------\n");
 
-        fiber_library_shutdown();
-        return;
+        if (read_custom_fiber_config(
+                &configs[i],
+                &priorities[i]) != 0) {
+
+            printf(
+                "[Application] Fiber configuration failed.\n"
+            );
+
+            fiber_library_shutdown();
+            return;
+        }
+
+        fiber_ids[i] =
+            fiber_create(
+                custom_worker,
+                &configs[i]
+            );
+
+        if (fiber_ids[i] == 0) {
+            printf(
+                "[Application] Failed to create fiber %d.\n",
+                i + 1
+            );
+
+            fiber_library_shutdown();
+            return;
+        }
+
+        fiber_set_priority(
+            fiber_ids[i],
+            (fiber_priority_t)priorities[i]
+        );
+
+        printf(
+            "\n[Application] Fiber %d created successfully.\n",
+            fiber_ids[i]
+        );
     }
 
-    fiber_priority_t priority =
-        (fiber_priority_t)priority_choice;
+    printf("\n");
+    printf("===============================================\n");
+    printf("        Custom Fiber Configuration\n");
+    printf("===============================================\n");
 
-    if (fiber_set_priority(fiber_id, priority) != 0) {
-        printf("[Application] Failed to set fiber priority.\n");
+    for (int i = 0; i < fiber_count; i++) {
+        const char *priority_name;
 
-        fiber_library_shutdown();
-        return;
+        if (priorities[i] == 1) {
+            priority_name = "LOW";
+        }
+        else if (priorities[i] == 2) {
+            priority_name = "NORMAL";
+        }
+        else {
+            priority_name = "HIGH";
+        }
+
+        printf(
+            "Fiber %u | Name: %-15s | Steps: %2d | "
+            "Priority: %-6s | Verbose: %s\n",
+            fiber_ids[i],
+            configs[i].name,
+            configs[i].steps,
+            priority_name,
+            configs[i].verbose ? "ON" : "OFF"
+        );
     }
 
-    printf(
-        "\n[Application] Custom fiber %u created successfully.\n",
-        fiber_id
-    );
+    printf("===============================================\n");
 
     fiber_debug_dump();
 
-    printf("\n[Application] Starting scheduler...\n");
+    printf("\n[Application] Starting scheduler...\n\n");
 
     fiber_schedule();
 
-    printf("\n[Application] Custom fiber execution completed.\n");
+    printf(
+        "\n[Application] All custom fibers completed.\n"
+    );
 
     fiber_stats_dump();
 
     fiber_library_shutdown();
 }
 
+/* ---------------------------------------------------------
+ * Scheduling Demo
+ * --------------------------------------------------------- */
+
 static void scheduling_demo(void)
 {
     printf("\n");
     printf("===============================================\n");
-    printf("              Scheduling Demo\n");
+    printf("             Scheduling Demo\n");
     printf("===============================================\n");
 
-    printf("\n[Application] Scheduling demo will be implemented next.\n");
+    printf(
+        "[Demo] Scheduling demonstration will be implemented next.\n"
+    );
 }
+
+/* ---------------------------------------------------------
+ * Synchronization Demo
+ * --------------------------------------------------------- */
 
 static void synchronization_demo(void)
 {
     printf("\n");
     printf("===============================================\n");
-    printf("            Synchronization Demo\n");
+    printf("           Synchronization Demo\n");
     printf("===============================================\n");
 
-    printf("\n[Application] Synchronization demo will be implemented next.\n");
+    printf(
+        "[Demo] Synchronization demonstration will be implemented next.\n"
+    );
 }
+
+/* ---------------------------------------------------------
+ * Fiber Information
+ * --------------------------------------------------------- */
 
 static void fiber_information(void)
 {
     printf("\n");
     printf("===============================================\n");
-    printf("              Fiber Information\n");
+    printf("             Fiber Information\n");
     printf("===============================================\n");
 
-    printf("\n[Application] Fiber information menu will be implemented next.\n");
+    printf(
+        "[Info] Fiber information menu will be implemented next.\n"
+    );
 }
+
+/* ---------------------------------------------------------
+ * Library Features
+ * --------------------------------------------------------- */
 
 static void show_features(void)
 {
     printf("\n");
     printf("===============================================\n");
-    printf("             FiberLib Features\n");
+    printf("            FiberLib Features\n");
     printf("===============================================\n");
 
-    printf("\n1. User-Level Fibers\n");
-    printf("   Fibers execute completely in user space.\n");
-
-    printf("\n2. Cooperative Scheduling\n");
-    printf("   Fibers voluntarily yield CPU control.\n");
-
-    printf("\n3. Priority Scheduling\n");
-    printf("   LOW, NORMAL and HIGH priorities are supported.\n");
-
-    printf("\n4. Round-Robin Scheduling\n");
-    printf("   Ready fibers receive scheduling opportunities.\n");
-
-    printf("\n5. Priority Aging\n");
-    printf("   Aging helps prevent starvation of low-priority fibers.\n");
-
-    printf("\n6. Fiber Join\n");
-    printf("   A fiber can wait for another fiber to complete.\n");
-
-    printf("\n7. Deadlock Detection\n");
-    printf("   Circular fiber dependencies can be detected.\n");
-
-    printf("\n8. Runtime Statistics\n");
-    printf("   Dispatches, yields, context switches and completions\n");
-    printf("   are tracked by the library.\n");
-
-    printf("\n9. Dynamic Fiber Creation\n");
-    printf("   Applications can create fibers using fiber_create().\n");
-
-    printf("\n===============================================\n");
+    printf("1. User-level cooperative fibers\n");
+    printf("2. Manual stack allocation\n");
+    printf("3. POSIX ucontext-based switching\n");
+    printf("4. Priority-aware scheduling\n");
+    printf("5. Priority aging for starvation prevention\n");
+    printf("6. Fiber join and blocking\n");
+    printf("7. Circular wait deadlock detection\n");
+    printf("8. Fiber state tracking\n");
+    printf("9. Runtime scheduling statistics\n");
+    printf("10. Debug state inspection\n");
+    printf("11. Multiple fiber creation\n");
+    printf("12. Interactive application interface\n");
 }
+
+/* ---------------------------------------------------------
+ * Main Menu
+ * --------------------------------------------------------- */
 
 static void show_menu(void)
 {
@@ -439,62 +506,75 @@ static void show_menu(void)
     printf("          User-Level Thread Library\n");
     printf("===============================================\n");
     printf("1. Run FiberLib Application\n");
-    printf("2. Create Custom Fiber\n");
+    printf("2. Create Custom Fiber(s)\n");
     printf("3. Run Scheduling Demo\n");
     printf("4. Run Synchronization Demo\n");
     printf("5. View Fiber Information\n");
     printf("6. Show Library Features\n");
     printf("7. Exit\n");
     printf("===============================================\n");
+    printf("Enter your choice: ");
 }
+
+/* ---------------------------------------------------------
+ * Main
+ * --------------------------------------------------------- */
 
 int main(void)
 {
     int choice;
 
     while (1) {
+
         show_menu();
 
-        printf("Enter your choice: ");
-
         if (scanf("%d", &choice) != 1) {
-            printf("\n[Application] Invalid input.\n");
+            printf(
+                "\n[Application] Invalid input. "
+                "Please enter a number.\n"
+            );
 
-            int ch;
-
-            while ((ch = getchar()) != '\n' && ch != EOF) {
-                /* Clear invalid input. */
-            }
-
-            continue;
+            return 1;
         }
 
-        if (choice == 1) {
-            run_application();
-        }
-        else if (choice == 2) {
-            create_custom_fiber();
-        }
-        else if (choice == 3) {
-            scheduling_demo();
-        }
-        else if (choice == 4) {
-            synchronization_demo();
-        }
-        else if (choice == 5) {
-            fiber_information();
-        }
-        else if (choice == 6) {
-            show_features();
-        }
-        else if (choice == 7) {
-            printf("\n[Application] Exiting FiberLib.\n");
-            break;
-        }
-        else {
-            printf("\n[Application] Invalid choice.\n");
+        switch (choice) {
+
+            case 1:
+                run_application();
+                break;
+
+            case 2:
+                create_custom_fiber();
+                break;
+
+            case 3:
+                scheduling_demo();
+                break;
+
+            case 4:
+                synchronization_demo();
+                break;
+
+            case 5:
+                fiber_information();
+                break;
+
+            case 6:
+                show_features();
+                break;
+
+            case 7:
+                printf(
+                    "\n[Application] Exiting FiberLib.\n"
+                );
+
+                return 0;
+
+            default:
+                printf(
+                    "\n[Application] Invalid choice. "
+                    "Please select 1-7.\n"
+                );
         }
     }
-
-    return 0;
 }
