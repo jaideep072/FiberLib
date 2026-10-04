@@ -30,3 +30,4 @@ build/
 # Core dumps
 core
 core.*
+tests/test_starvation

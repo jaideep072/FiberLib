@@ -7,6 +7,12 @@
 #define FIBER_STACK_SIZE (64 * 1024)
 #define MAX_FIBERS 128
 
+/*
+ * Number of scheduler rounds a fiber must wait
+ * before receiving one level of effective priority.
+ */
+#define AGING_THRESHOLD 5
+
 typedef struct fiber_control_block {
     fiber_id_t id;
     fiber_state_t state;
@@ -21,6 +27,12 @@ typedef struct fiber_control_block {
     void *arg;
 
     unsigned long switches;
+
+    /*
+     * Number of scheduler rounds this fiber has
+     * remained READY without being selected.
+     */
+    unsigned long aging;
 
     fiber_id_t waiting_for;
 } fiber_control_block_t;
@@ -177,6 +189,7 @@ static void release_fcb(fiber_control_block_t *fcb)
     fcb->function = NULL;
     fcb->arg = NULL;
     fcb->switches = 0;
+    fcb->aging = 0;
     fcb->waiting_for = 0;
     fcb->priority = FIBER_PRIORITY_NORMAL;
     fcb->state = FIBER_ZOMBIE;
@@ -184,43 +197,89 @@ static void release_fcb(fiber_control_block_t *fcb)
 }
 
 /*
- * Priority-aware Round-Robin scheduler.
+ * Calculate the effective scheduling priority.
  *
- * The scheduler first finds the highest-priority READY fiber.
- * Within the same priority level, fibers are selected in
- * Round-Robin order using scheduler_cursor.
+ * Base priority:
+ *   LOW    = 1
+ *   NORMAL = 2
+ *   HIGH   = 3
+ *
+ * Aging increases the effective priority of a fiber
+ * that has been waiting for multiple scheduler rounds.
+ */
+static unsigned long effective_priority(
+    const fiber_control_block_t *fcb)
+{
+    return (unsigned long)fcb->priority +
+           (fcb->aging / AGING_THRESHOLD);
+}
+
+/*
+ * Priority-aware Round-Robin scheduler with aging.
+ *
+ * Higher effective priority is preferred.
+ *
+ * Aging prevents starvation:
+ * a READY fiber that waits long enough gradually
+ * receives a higher effective priority.
+ *
+ * Fibers with the same effective priority are selected
+ * using Round-Robin order.
  */
 static fiber_control_block_t *find_next_ready(void)
 {
-    fiber_priority_t highest_priority = 0;
+    unsigned long highest_effective_priority = 0;
 
     /*
-     * Find the highest priority among READY fibers.
+     * Increase the aging value of every READY fiber
+     * before selecting the next fiber.
      */
     for (unsigned int i = 0; i < MAX_FIBERS; i++) {
-        if (fibers[i].state == FIBER_READY &&
-            fibers[i].priority > highest_priority) {
-
-            highest_priority = fibers[i].priority;
+        if (fibers[i].state == FIBER_READY) {
+            fibers[i].aging++;
         }
     }
 
-    if (highest_priority == 0) {
+    /*
+     * Find the highest effective priority.
+     */
+    for (unsigned int i = 0; i < MAX_FIBERS; i++) {
+        if (fibers[i].state == FIBER_READY) {
+            unsigned long effective =
+                effective_priority(&fibers[i]);
+
+            if (effective > highest_effective_priority) {
+                highest_effective_priority = effective;
+            }
+        }
+    }
+
+    if (highest_effective_priority == 0) {
         return NULL;
     }
 
     /*
-     * Select a fiber with the highest priority,
+     * Select a fiber with the highest effective priority,
      * starting from the scheduler cursor.
      */
-    for (unsigned int offset = 0; offset < MAX_FIBERS; offset++) {
+    for (unsigned int offset = 0;
+         offset < MAX_FIBERS;
+         offset++) {
+
         unsigned int index =
             (scheduler_cursor + offset) % MAX_FIBERS;
 
         if (fibers[index].state == FIBER_READY &&
-            fibers[index].priority == highest_priority) {
+            effective_priority(&fibers[index]) ==
+                highest_effective_priority) {
 
-            scheduler_cursor = (index + 1) % MAX_FIBERS;
+            scheduler_cursor =
+                (index + 1) % MAX_FIBERS;
+
+            /*
+             * Reset aging after the fiber receives CPU time.
+             */
+            fibers[index].aging = 0;
 
             return &fibers[index];
         }
@@ -240,6 +299,7 @@ static void wake_waiting_fibers(fiber_id_t completed_id)
 
             fibers[i].state = FIBER_READY;
             fibers[i].waiting_for = 0;
+            fibers[i].aging = 0;
 
             printf(
                 "[FiberLib] Fiber %u unblocked after fiber %u finished.\n",
@@ -253,21 +313,16 @@ static void wake_waiting_fibers(fiber_id_t completed_id)
 /*
  * Detect whether a blocked fiber is part of a circular
  * wait-for dependency.
- *
- * Example:
- *
- * Fiber 1 -> Fiber 2
- * Fiber 2 -> Fiber 1
- *
- * This forms a cycle and therefore a deadlock.
  */
 static int has_wait_cycle(
-    fiber_id_t start_id
-)
+    fiber_id_t start_id)
 {
     fiber_id_t current_id = start_id;
 
-    for (unsigned int depth = 0; depth < MAX_FIBERS; depth++) {
+    for (unsigned int depth = 0;
+         depth < MAX_FIBERS;
+         depth++) {
+
         fiber_control_block_t *current =
             find_fiber(current_id);
 
@@ -277,7 +332,8 @@ static int has_wait_cycle(
             return 0;
         }
 
-        fiber_id_t waiting_for = current->waiting_for;
+        fiber_id_t waiting_for =
+            current->waiting_for;
 
         if (waiting_for == 0) {
             return 0;
@@ -290,10 +346,6 @@ static int has_wait_cycle(
         current_id = waiting_for;
     }
 
-    /*
-     * Reaching MAX_FIBERS without terminating the chain
-     * means the dependency graph contains a cycle.
-     */
     return 1;
 }
 
@@ -320,10 +372,13 @@ static int detect_deadlock(void)
  */
 static void fiber_entry_point(fiber_id_t id)
 {
-    fiber_control_block_t *fcb = find_fiber(id);
+    fiber_control_block_t *fcb =
+        find_fiber(id);
 
     if (fcb == NULL) {
-        fprintf(stderr, "[FiberLib] Invalid fiber ID.\n");
+        fprintf(stderr,
+                "[FiberLib] Invalid fiber ID.\n");
+
         return;
     }
 
@@ -359,7 +414,9 @@ static void fiber_entry_point(fiber_id_t id)
  */
 void fiber_yield(void)
 {
-    if (!scheduler_running || current_fiber == NULL) {
+    if (!scheduler_running ||
+        current_fiber == NULL) {
+
         return;
     }
 
@@ -369,7 +426,8 @@ void fiber_yield(void)
     total_yields++;
     total_context_switches++;
 
-    fiber_control_block_t *previous = current_fiber;
+    fiber_control_block_t *previous =
+        current_fiber;
 
     current_fiber = NULL;
 
@@ -410,7 +468,9 @@ int fiber_join(fiber_id_t fiber_id)
     fiber_control_block_t *target =
         find_fiber_any_state(fiber_id);
 
-    if (target == NULL || target->id == 0) {
+    if (target == NULL ||
+        target->id == 0) {
+
         fprintf(stderr,
                 "[FiberLib] Error: invalid fiber ID %u.\n",
                 fiber_id);
@@ -424,6 +484,7 @@ int fiber_join(fiber_id_t fiber_id)
 
     current_fiber->waiting_for = fiber_id;
     current_fiber->state = FIBER_BLOCKED;
+    current_fiber->aging = 0;
 
     printf(
         "[FiberLib] Fiber %u is waiting for fiber %u.\n",
@@ -432,8 +493,7 @@ int fiber_join(fiber_id_t fiber_id)
     );
 
     /*
-     * Detect a circular wait immediately after creating
-     * the dependency.
+     * Detect a circular wait immediately.
      */
     if (detect_deadlock()) {
         deadlock_detected = 1;
@@ -444,7 +504,8 @@ int fiber_join(fiber_id_t fiber_id)
         );
     }
 
-    fiber_control_block_t *previous = current_fiber;
+    fiber_control_block_t *previous =
+        current_fiber;
 
     current_fiber = NULL;
 
@@ -539,8 +600,7 @@ void fiber_schedule(void)
         if (next == NULL) {
             /*
              * No READY fibers remain while active fibers
-             * still exist. This means the scheduler cannot
-             * make progress.
+             * still exist.
              */
             if (detect_deadlock()) {
                 deadlock_detected = 1;
@@ -613,14 +673,18 @@ void fiber_debug_dump(void)
 
     printf("------------------------------------\n");
 
-    for (unsigned int i = 0; i < MAX_FIBERS; i++) {
+    for (unsigned int i = 0;
+         i < MAX_FIBERS;
+         i++) {
+
         if (fibers[i].state != FIBER_ZOMBIE) {
             printf(
-                "TID: %-3u | State: %-7s | Priority: %-6s | Switches: %-5lu | Stack: %zu bytes",
+                "TID: %-3u | State: %-7s | Priority: %-6s | Switches: %-5lu | Aging: %-5lu | Stack: %zu bytes",
                 fibers[i].id,
                 state_to_string(fibers[i].state),
                 priority_to_string(fibers[i].priority),
                 fibers[i].switches,
+                fibers[i].aging,
                 fibers[i].stack_size
             );
 
@@ -676,6 +740,7 @@ int fiber_library_init(void)
 
     if (getcontext(&scheduler_context) == -1) {
         perror("[FiberLib] getcontext");
+
         return -1;
     }
 
@@ -724,7 +789,8 @@ fiber_id_t fiber_create(
         return 0;
     }
 
-    fcb->stack = malloc(FIBER_STACK_SIZE);
+    fcb->stack =
+        malloc(FIBER_STACK_SIZE);
 
     if (fcb->stack == NULL) {
         fprintf(stderr,
@@ -749,13 +815,19 @@ fiber_id_t fiber_create(
     fcb->function = function;
     fcb->arg = arg;
     fcb->switches = 0;
+    fcb->aging = 0;
     fcb->waiting_for = 0;
 
-    fcb->context.uc_stack.ss_sp = fcb->stack;
-    fcb->context.uc_stack.ss_size = fcb->stack_size;
+    fcb->context.uc_stack.ss_sp =
+        fcb->stack;
+
+    fcb->context.uc_stack.ss_size =
+        fcb->stack_size;
+
     fcb->context.uc_stack.ss_flags = 0;
 
-    fcb->context.uc_link = &scheduler_context;
+    fcb->context.uc_link =
+        &scheduler_context;
 
     makecontext(
         &fcb->context,
@@ -788,7 +860,10 @@ void fiber_library_shutdown(void)
     scheduler_running = 0;
     current_fiber = NULL;
 
-    for (unsigned int i = 0; i < MAX_FIBERS; i++) {
+    for (unsigned int i = 0;
+         i < MAX_FIBERS;
+         i++) {
+
         if (fibers[i].state != FIBER_ZOMBIE) {
             release_fcb(&fibers[i]);
         }
@@ -797,5 +872,7 @@ void fiber_library_shutdown(void)
     fiber_count = 0;
     library_initialized = 0;
 
-    printf("[FiberLib] Scheduler shutdown complete.\n");
+    printf(
+        "[FiberLib] Scheduler shutdown complete.\n"
+    );
 }
