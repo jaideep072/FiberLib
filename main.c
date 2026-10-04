@@ -8,10 +8,11 @@
  * Demonstrates:
  * - User-level cooperative fibers
  * - Cooperative Round-Robin scheduling
- * - Priority scheduling
+ * - Priority-aware scheduling
  * - Fiber joining
  * - Multiple fiber creation
  * - Scheduling demonstration
+ * - Priority scheduling demonstration
  * - Runtime statistics
  */
 
@@ -550,6 +551,158 @@ static void scheduling_demo(void)
 }
 
 /* ---------------------------------------------------------
+ * Priority Scheduling Demo Configuration
+ * --------------------------------------------------------- */
+
+typedef struct {
+    char name[32];
+    int rounds;
+    fiber_priority_t priority;
+} priority_demo_config_t;
+
+/* ---------------------------------------------------------
+ * Priority Scheduling Demo Worker
+ * --------------------------------------------------------- */
+
+static void priority_demo_worker(void *arg)
+{
+    priority_demo_config_t *config =
+        (priority_demo_config_t *)arg;
+
+    printf(
+        "\n[Priority Demo] Fiber %s started | Priority: ",
+        config->name
+    );
+
+    if (config->priority == FIBER_PRIORITY_HIGH) {
+        printf("HIGH\n");
+    }
+    else if (config->priority == FIBER_PRIORITY_NORMAL) {
+        printf("NORMAL\n");
+    }
+    else {
+        printf("LOW\n");
+    }
+
+    for (int i = 1; i <= config->rounds; i++) {
+
+        printf(
+            "[Priority Demo] Fiber %s | Priority: ",
+            config->name
+        );
+
+        if (config->priority == FIBER_PRIORITY_HIGH) {
+            printf("HIGH");
+        }
+        else if (config->priority == FIBER_PRIORITY_NORMAL) {
+            printf("NORMAL");
+        }
+        else {
+            printf("LOW");
+        }
+
+        printf(
+            " | Round %d/%d\n",
+            i,
+            config->rounds
+        );
+
+        fiber_yield();
+    }
+
+    printf(
+        "[Priority Demo] Fiber %s completed.\n",
+        config->name
+    );
+}
+
+/* ---------------------------------------------------------
+ * Priority Scheduling Demo
+ * --------------------------------------------------------- */
+
+static void priority_scheduling_demo(void)
+{
+    priority_demo_config_t configs[3];
+    fiber_id_t fiber_ids[3];
+
+    printf("\n");
+    printf("===============================================\n");
+    printf("          Priority Scheduling Demo\n");
+    printf("===============================================\n");
+
+    printf(
+        "[Demo] Higher-priority fibers receive more\n"
+        "       scheduling opportunities.\n"
+    );
+
+    printf(
+        "[Demo] Priority values: LOW=1, NORMAL=2, HIGH=3.\n\n"
+    );
+
+    if (fiber_library_init() != 0) {
+        printf(
+            "[Demo] Failed to initialize FiberLib.\n"
+        );
+
+        return;
+    }
+
+    strcpy(configs[0].name, "HIGH");
+    configs[0].rounds = 6;
+    configs[0].priority = FIBER_PRIORITY_HIGH;
+
+    strcpy(configs[1].name, "NORMAL");
+    configs[1].rounds = 6;
+    configs[1].priority = FIBER_PRIORITY_NORMAL;
+
+    strcpy(configs[2].name, "LOW");
+    configs[2].rounds = 6;
+    configs[2].priority = FIBER_PRIORITY_LOW;
+
+    for (int i = 0; i < 3; i++) {
+
+        fiber_ids[i] =
+            fiber_create(
+                priority_demo_worker,
+                &configs[i]
+            );
+
+        if (fiber_ids[i] == 0) {
+            printf(
+                "[Demo] Failed to create priority fiber %d.\n",
+                i + 1
+            );
+
+            fiber_library_shutdown();
+            return;
+        }
+
+        fiber_set_priority(
+            fiber_ids[i],
+            configs[i].priority
+        );
+    }
+
+    printf(
+        "[Demo] Created HIGH, NORMAL and LOW priority fibers.\n"
+    );
+
+    fiber_debug_dump();
+
+    printf("\n[Demo] Starting priority-aware scheduler...\n\n");
+
+    fiber_schedule();
+
+    printf(
+        "\n[Demo] Priority scheduling demonstration completed.\n"
+    );
+
+    fiber_stats_dump();
+
+    fiber_library_shutdown();
+}
+
+/* ---------------------------------------------------------
  * Synchronization Demo
  * --------------------------------------------------------- */
 
@@ -604,7 +757,8 @@ static void show_features(void)
     printf("10. Debug state inspection\n");
     printf("11. Multiple fiber creation\n");
     printf("12. Interactive scheduling demonstration\n");
-    printf("13. Interactive application interface\n");
+    printf("13. Priority scheduling demonstration\n");
+    printf("14. Interactive application interface\n");
 }
 
 /* ---------------------------------------------------------
@@ -624,7 +778,8 @@ static void show_menu(void)
     printf("4. Run Synchronization Demo\n");
     printf("5. View Fiber Information\n");
     printf("6. Show Library Features\n");
-    printf("7. Exit\n");
+    printf("7. Priority Scheduling Demo\n");
+    printf("8. Exit\n");
     printf("===============================================\n");
     printf("Enter your choice: ");
 }
@@ -677,6 +832,10 @@ int main(void)
                 break;
 
             case 7:
+                priority_scheduling_demo();
+                break;
+
+            case 8:
                 printf(
                     "\n[Application] Exiting FiberLib.\n"
                 );
@@ -686,7 +845,7 @@ int main(void)
             default:
                 printf(
                     "\n[Application] Invalid choice. "
-                    "Please select 1-7.\n"
+                    "Please select 1-8.\n"
                 );
         }
     }
