@@ -132,12 +132,6 @@ static void run_application(void)
         return;
     }
 
-    /*
-     * Network Monitor and Report Generator use
-     * HIGH priority so the report generator can
-     * reach fiber_join() while the network monitor
-     * is still running.
-     */
     fiber_set_priority(
         network_monitor_id,
         FIBER_PRIORITY_HIGH
@@ -268,6 +262,36 @@ static void create_custom_fiber(void)
     fiber_library_shutdown();
 }
 
+static void scheduling_demo(void)
+{
+    printf("\n");
+    printf("===============================================\n");
+    printf("              Scheduling Demo\n");
+    printf("===============================================\n");
+
+    printf("\n[Application] Scheduling demo will be implemented next.\n");
+}
+
+static void synchronization_demo(void)
+{
+    printf("\n");
+    printf("===============================================\n");
+    printf("            Synchronization Demo\n");
+    printf("===============================================\n");
+
+    printf("\n[Application] Synchronization demo will be implemented next.\n");
+}
+
+static void fiber_information(void)
+{
+    printf("\n");
+    printf("===============================================\n");
+    printf("              Fiber Information\n");
+    printf("===============================================\n");
+
+    printf("\n[Application] Fiber information menu will be implemented next.\n");
+}
+
 static void show_features(void)
 {
     printf("\n");
@@ -315,8 +339,11 @@ static void show_menu(void)
     printf("===============================================\n");
     printf("1. Run FiberLib Application\n");
     printf("2. Create Custom Fiber\n");
-    printf("3. Show Library Features\n");
-    printf("4. Exit\n");
+    printf("3. Run Scheduling Demo\n");
+    printf("4. Run Synchronization Demo\n");
+    printf("5. View Fiber Information\n");
+    printf("6. Show Library Features\n");
+    printf("7. Exit\n");
     printf("===============================================\n");
 }
 
@@ -348,9 +375,18 @@ int main(void)
             create_custom_fiber();
         }
         else if (choice == 3) {
-            show_features();
+            scheduling_demo();
         }
         else if (choice == 4) {
+            synchronization_demo();
+        }
+        else if (choice == 5) {
+            fiber_information();
+        }
+        else if (choice == 6) {
+            show_features();
+        }
+        else if (choice == 7) {
             printf("\n[Application] Exiting FiberLib.\n");
             break;
         }
