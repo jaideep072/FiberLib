@@ -1,0 +1,32 @@
+# Compiled object files
+*.o
+
+# Compiled example executables
+examples/create_demo
+examples/join_demo
+examples/priority_demo
+examples/round_robin_demo
+
+# Compiled test executables
+tests/test_init
+tests/test_priority
+tests/test_invalid_create
+tests/test_self_join
+tests/test_invalid_join
+tests/test_uninitialized
+tests/test_double_init
+tests/test_double_shutdown
+tests/test_join_completed
+tests/test_deadlock
+tests/test_max_fibers
+
+# Build directory
+build/
+
+# Editor temporary files
+*~
+*.swp
+
+# Core dumps
+core
+core.*
