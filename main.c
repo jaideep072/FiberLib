@@ -1,7 +1,14 @@
 #include "include/fiber.h"
 #include <stdio.h>
+#include <string.h>
 
 static fiber_id_t network_monitor_id;
+
+typedef struct {
+    char name[64];
+    int steps;
+    int verbose;
+} custom_fiber_config_t;
 
 static void network_monitor(void *arg)
 {
@@ -75,24 +82,53 @@ static void report_generator(void *arg)
 
 static void custom_worker(void *arg)
 {
-    int steps = *(int *)arg;
+    custom_fiber_config_t *config =
+        (custom_fiber_config_t *)arg;
 
     printf(
-        "\n[Custom Fiber] Started with %d work steps.\n",
-        steps
+        "\n[Custom Fiber: %s] Started.\n",
+        config->name
     );
 
-    for (int i = 1; i <= steps; i++) {
+    printf(
+        "[Custom Fiber: %s] Total work steps: %d\n",
+        config->name,
+        config->steps
+    );
+
+    if (config->verbose) {
         printf(
-            "[Custom Fiber] Executing work step %d/%d\n",
-            i,
-            steps
+            "[Custom Fiber: %s] Verbose mode enabled.\n",
+            config->name
         );
+    }
+
+    for (int i = 1; i <= config->steps; i++) {
+
+        if (config->verbose) {
+            printf(
+                "[Custom Fiber: %s] Executing work step %d/%d\n",
+                config->name,
+                i,
+                config->steps
+            );
+        }
+        else {
+            printf(
+                "[Custom Fiber: %s] Step %d/%d\n",
+                config->name,
+                i,
+                config->steps
+            );
+        }
 
         fiber_yield();
     }
 
-    printf("[Custom Fiber] Work completed.\n");
+    printf(
+        "[Custom Fiber: %s] Work completed.\n",
+        config->name
+    );
 }
 
 static void run_application(void)
@@ -174,17 +210,34 @@ static void run_application(void)
 
 static void create_custom_fiber(void)
 {
-    int steps;
+    custom_fiber_config_t config;
     int priority_choice;
+    int verbose_choice;
+
+    memset(&config, 0, sizeof(config));
 
     printf("\n");
     printf("===============================================\n");
     printf("              Create Custom Fiber\n");
     printf("===============================================\n");
 
+    printf("Enter fiber name: ");
+
+    if (scanf("%63s", config.name) != 1) {
+        printf("[Application] Invalid fiber name.\n");
+
+        int ch;
+
+        while ((ch = getchar()) != '\n' && ch != EOF) {
+            /* Clear invalid input. */
+        }
+
+        return;
+    }
+
     printf("Enter number of work steps (1-10): ");
 
-    if (scanf("%d", &steps) != 1) {
+    if (scanf("%d", &config.steps) != 1) {
         printf("[Application] Invalid input.\n");
 
         int ch;
@@ -196,7 +249,7 @@ static void create_custom_fiber(void)
         return;
     }
 
-    if (steps < 1 || steps > 10) {
+    if (config.steps < 1 || config.steps > 10) {
         printf("[Application] Steps must be between 1 and 10.\n");
         return;
     }
@@ -224,13 +277,56 @@ static void create_custom_fiber(void)
         return;
     }
 
+    printf("\nEnable verbose output?\n");
+    printf("1. Yes\n");
+    printf("2. No\n");
+    printf("Enter choice: ");
+
+    if (scanf("%d", &verbose_choice) != 1) {
+        printf("[Application] Invalid input.\n");
+
+        int ch;
+
+        while ((ch = getchar()) != '\n' && ch != EOF) {
+            /* Clear invalid input. */
+        }
+
+        return;
+    }
+
+    if (verbose_choice != 1 && verbose_choice != 2) {
+        printf("[Application] Invalid verbose option.\n");
+        return;
+    }
+
+    config.verbose = (verbose_choice == 1);
+
+    printf("\n[Application] Configuration:\n");
+    printf("  Fiber Name   : %s\n", config.name);
+    printf("  Work Steps   : %d\n", config.steps);
+
+    if (priority_choice == 1) {
+        printf("  Priority     : LOW\n");
+    }
+    else if (priority_choice == 2) {
+        printf("  Priority     : NORMAL\n");
+    }
+    else {
+        printf("  Priority     : HIGH\n");
+    }
+
+    printf(
+        "  Verbose Mode : %s\n",
+        config.verbose ? "ON" : "OFF"
+    );
+
     if (fiber_library_init() != 0) {
         printf("[Application] Failed to initialize FiberLib.\n");
         return;
     }
 
     fiber_id_t fiber_id =
-        fiber_create(custom_worker, &steps);
+        fiber_create(custom_worker, &config);
 
     if (fiber_id == 0) {
         printf("[Application] Failed to create custom fiber.\n");
@@ -242,7 +338,12 @@ static void create_custom_fiber(void)
     fiber_priority_t priority =
         (fiber_priority_t)priority_choice;
 
-    fiber_set_priority(fiber_id, priority);
+    if (fiber_set_priority(fiber_id, priority) != 0) {
+        printf("[Application] Failed to set fiber priority.\n");
+
+        fiber_library_shutdown();
+        return;
+    }
 
     printf(
         "\n[Application] Custom fiber %u created successfully.\n",
