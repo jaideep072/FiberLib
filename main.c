@@ -856,8 +856,163 @@ static void create_custom_fiber(void)
 }
 
 /* =========================================================
- * Synchronization Demo Placeholder
+ * Synchronization Demo
+ *
+ * Demonstrates cooperative mutual exclusion at the
+ * application level using a shared lock owner.
+ *
+ * FiberLib currently provides fiber_yield() and fiber IDs,
+ * so this demo builds a simple cooperative lock on top of
+ * those primitives rather than pretending FiberLib already
+ * contains a mutex API.
  * ========================================================= */
+
+typedef struct {
+    fiber_id_t owner;
+} cooperative_lock_t;
+
+typedef struct {
+    const char *name;
+    fiber_id_t id;
+    cooperative_lock_t *lock;
+    int *shared_counter;
+} synchronization_worker_config_t;
+
+static cooperative_lock_t sync_lock = {
+    0
+};
+
+static int synchronization_counter = 0;
+
+static int cooperative_lock_acquire(
+    cooperative_lock_t *lock,
+    fiber_id_t fiber_id,
+    const char *fiber_name
+)
+{
+    while (lock->owner != 0 &&
+           lock->owner != fiber_id) {
+
+        printf(
+            "[Synchronization] %s waiting for the shared resource...\n",
+            fiber_name
+        );
+
+        fiber_yield();
+    }
+
+    lock->owner = fiber_id;
+
+    printf(
+        "[Synchronization] %s acquired the lock.\n",
+        fiber_name
+    );
+
+    return 0;
+}
+
+static void cooperative_lock_release(
+    cooperative_lock_t *lock,
+    fiber_id_t fiber_id,
+    const char *fiber_name
+)
+{
+    if (lock->owner == fiber_id) {
+        lock->owner = 0;
+
+        printf(
+            "[Synchronization] %s released the lock.\n",
+            fiber_name
+        );
+    }
+}
+
+static void synchronization_worker(void *arg)
+{
+    synchronization_worker_config_t *config =
+        (synchronization_worker_config_t *)arg;
+
+    printf(
+        "\n[Synchronization] %s started.\n",
+        config->name
+    );
+
+    for (int i = 1; i <= 3; i++) {
+        printf(
+            "[Synchronization] %s requesting shared resource "
+            "(operation %d/3).\n",
+            config->name,
+            i
+        );
+
+        if (cooperative_lock_acquire(
+                config->lock,
+                config->id,
+                config->name
+            ) != 0) {
+
+            printf(
+                "[Synchronization] %s failed to acquire lock.\n",
+                config->name
+            );
+
+            return;
+        }
+
+        printf(
+            "[Synchronization] %s entered critical section.\n",
+            config->name
+        );
+
+        int old_value =
+            *(config->shared_counter);
+
+        printf(
+            "[Synchronization] %s reads shared counter = %d\n",
+            config->name,
+            old_value
+        );
+
+        /*
+         * Yield while holding the lock.
+         *
+         * This makes the synchronization demonstration
+         * visible: another fiber may run, but it cannot
+         * enter the critical section because this fiber
+         * still owns the lock.
+         */
+        fiber_yield();
+
+        *(config->shared_counter) =
+            old_value + 1;
+
+        printf(
+            "[Synchronization] %s updates shared counter: "
+            "%d -> %d\n",
+            config->name,
+            old_value,
+            *(config->shared_counter)
+        );
+
+        printf(
+            "[Synchronization] %s leaving critical section.\n",
+            config->name
+        );
+
+        cooperative_lock_release(
+            config->lock,
+            config->id,
+            config->name
+        );
+
+        fiber_yield();
+    }
+
+    printf(
+        "[Synchronization] %s completed all operations.\n",
+        config->name
+    );
+}
 
 static void synchronization_demo(void)
 {
@@ -867,18 +1022,149 @@ static void synchronization_demo(void)
     printf("===============================================\n");
 
     printf(
-        "[Demo] Synchronization features will be added here.\n"
+        "[Demo] Two fibers will compete for one shared resource.\n"
     );
 
     printf(
-        "[Demo] Current FiberLib synchronization support:\n"
+        "[Demo] A cooperative lock protects the critical section.\n"
     );
 
     printf(
-        "       - Cooperative yielding\n"
-        "       - Fiber join / waiting\n"
-        "       - Deadlock detection\n"
+        "[Demo] The shared counter is updated only while a fiber\n"
+        "       owns the lock.\n\n"
     );
+
+    if (fiber_library_init() != 0) {
+        printf(
+            "[Demo] Failed to initialize FiberLib.\n"
+        );
+
+        return;
+    }
+
+    sync_lock.owner = 0;
+    synchronization_counter = 0;
+
+    synchronization_worker_config_t worker_a = {
+        "Worker-A",
+        0,
+        &sync_lock,
+        &synchronization_counter
+    };
+
+    synchronization_worker_config_t worker_b = {
+        "Worker-B",
+        0,
+        &sync_lock,
+        &synchronization_counter
+    };
+
+    fiber_id_t worker_a_id =
+        fiber_create(
+            synchronization_worker,
+            &worker_a
+        );
+
+    fiber_id_t worker_b_id =
+        fiber_create(
+            synchronization_worker,
+            &worker_b
+        );
+
+    if (worker_a_id == 0 ||
+        worker_b_id == 0) {
+
+        printf(
+            "[Demo] Failed to create synchronization fibers.\n"
+        );
+
+        fiber_library_shutdown();
+
+        return;
+    }
+
+    worker_a.id = worker_a_id;
+    worker_b.id = worker_b_id;
+
+    fiber_set_priority(
+        worker_a_id,
+        FIBER_PRIORITY_NORMAL
+    );
+
+    fiber_set_priority(
+        worker_b_id,
+        FIBER_PRIORITY_NORMAL
+    );
+
+    printf(
+        "[Demo] Created Worker-A (Fiber %u) and "
+        "Worker-B (Fiber %u).\n",
+        worker_a_id,
+        worker_b_id
+    );
+
+    printf(
+        "[Demo] Both fibers will perform 3 protected operations.\n"
+    );
+
+    printf(
+        "[Demo] Expected final counter value: 6\n\n"
+    );
+
+    fiber_debug_dump();
+
+    printf(
+        "\n[Demo] Starting synchronization demonstration...\n\n"
+    );
+
+    fiber_schedule();
+
+    printf(
+        "\n===============================================\n"
+    );
+
+    printf(
+        "        Synchronization Result\n"
+    );
+
+    printf(
+        "===============================================\n"
+    );
+
+    printf(
+        "Final shared counter : %d\n",
+        synchronization_counter
+    );
+
+    printf(
+        "Expected counter      : 6\n"
+    );
+
+    if (synchronization_counter == 6) {
+        printf(
+            "Result                : PASS\n"
+        );
+
+        printf(
+            "[Demo] All protected updates completed successfully.\n"
+        );
+    } else {
+        printf(
+            "Result                : FAIL\n"
+        );
+
+        printf(
+            "[Demo] Shared counter did not reach the expected value.\n"
+        );
+    }
+
+    printf("\n");
+
+    fiber_stats_dump();
+
+    fiber_library_shutdown();
+
+    sync_lock.owner = 0;
 
     printf("\n");
 }
@@ -981,7 +1267,11 @@ static void show_features(void)
     );
 
     printf(
-        "15. Interactive application interface\n"
+        "15. Cooperative synchronization demonstration\n"
+    );
+
+    printf(
+        "16. Interactive application interface\n"
     );
 
     printf("\n");
