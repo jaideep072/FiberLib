@@ -19,6 +19,8 @@ tests/test_double_shutdown
 tests/test_join_completed
 tests/test_deadlock
 tests/test_max_fibers
+fiberlib
+examples/fiber_monitor
 
 # Build directory
 build/

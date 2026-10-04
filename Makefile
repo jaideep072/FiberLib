@@ -1,13 +1,15 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c11 -Iinclude
 
+APP = fiberlib
 LIB = src/fiber.o
 
 EXAMPLES = \
 	examples/create_demo \
 	examples/round_robin_demo \
 	examples/priority_demo \
-	examples/join_demo
+	examples/join_demo \
+	examples/fiber_monitor
 
 TESTS = \
 	tests/test_init \
@@ -23,7 +25,10 @@ TESTS = \
 	tests/test_max_fibers \
 	tests/test_starvation
 
-all: $(LIB) examples tests
+all: $(APP) $(LIB) examples tests
+
+$(APP): main.c $(LIB)
+	$(CC) $(CFLAGS) main.c $(LIB) -o $(APP)
 
 $(LIB): src/fiber.c include/fiber.h
 	$(CC) $(CFLAGS) -c src/fiber.c -o src/fiber.o
@@ -40,6 +45,9 @@ examples/priority_demo: examples/priority_demo.c $(LIB)
 	$(CC) $(CFLAGS) $< $(LIB) -o $@
 
 examples/join_demo: examples/join_demo.c $(LIB)
+	$(CC) $(CFLAGS) $< $(LIB) -o $@
+
+examples/fiber_monitor: examples/fiber_monitor.c $(LIB)
 	$(CC) $(CFLAGS) $< $(LIB) -o $@
 
 tests: $(TESTS)
@@ -88,6 +96,7 @@ test: $(TESTS)
 	done
 
 clean:
+	rm -f $(APP)
 	rm -f src/fiber.o
 	rm -f $(EXAMPLES)
 	rm -f $(TESTS)
