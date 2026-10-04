@@ -26,6 +26,50 @@ typedef struct {
 } aging_demo_config_t;
 
 /* =========================================================
+ * UI Helpers
+ * ========================================================= */
+
+static void print_header(const char *title)
+{
+    printf("\n");
+    printf("==================================================\n");
+    printf(" %s\n", title);
+    printf("==================================================\n");
+}
+
+static void print_success(const char *message)
+{
+    printf("\n[ SUCCESS ] %s\n", message);
+}
+
+static void print_error(const char *message)
+{
+    printf("\n[ ERROR ] %s\n", message);
+}
+
+static void print_info(const char *message)
+{
+    printf("\n[ INFO ] %s\n", message);
+}
+
+static void clear_input_buffer(void)
+{
+    int character;
+
+    while ((character = getchar()) != '\n' &&
+           character != EOF) {
+    }
+}
+
+static void pause_before_menu(void)
+{
+    printf("\nPress ENTER to return to the main menu...");
+
+    clear_input_buffer();
+    getchar();
+}
+
+/* =========================================================
  * Application Fibers
  * ========================================================= */
 
@@ -173,24 +217,19 @@ static void scheduling_worker(void *arg)
 
 static void scheduling_demo(void)
 {
-    printf("\n");
-    printf("===============================================\n");
-    printf("             Scheduling Demo\n");
-    printf("===============================================\n");
+    print_header("Scheduling Demo");
 
-    printf(
-        "[Demo] This demonstrates cooperative Round-Robin scheduling.\n"
+    print_info(
+        "This demonstrates cooperative Round-Robin scheduling."
     );
 
-    printf(
-        "[Demo] Each fiber voluntarily yields after every round.\n\n"
+    print_info(
+        "Each fiber voluntarily yields after every round."
     );
 
     if (fiber_library_init() != 0) {
-        printf(
-            "[Demo] Failed to initialize FiberLib.\n"
-        );
-
+        print_error("Failed to initialize FiberLib.");
+        pause_before_menu();
         return;
     }
 
@@ -208,36 +247,39 @@ static void scheduling_demo(void)
         fiber_create(scheduling_worker, fiber_c);
 
     if (a == 0 || b == 0 || c == 0) {
-        printf(
-            "[Demo] Failed to create scheduling fibers.\n"
-        );
+        print_error("Failed to create scheduling fibers.");
 
         fiber_library_shutdown();
+        pause_before_menu();
 
         return;
     }
 
     printf(
-        "[Demo] Created three fibers: A, B and C.\n"
+        "\n[Application] Created three fibers: A, B and C.\n"
     );
 
     fiber_debug_dump();
 
     printf(
-        "\n[Demo] Starting Round-Robin scheduler...\n\n"
+        "\n[Application] Starting Round-Robin scheduler...\n\n"
     );
 
     fiber_schedule();
 
     printf(
-        "\n[Demo] Scheduling demonstration completed.\n"
+        "\n[Application] Scheduling demonstration completed.\n"
     );
 
     fiber_stats_dump();
 
     fiber_library_shutdown();
 
-    printf("\n");
+    print_success(
+        "Scheduling demonstration completed successfully."
+    );
+
+    pause_before_menu();
 }
 
 /* =========================================================
@@ -294,25 +336,19 @@ static void priority_demo_worker(void *arg)
 
 static void priority_scheduling_demo(void)
 {
-    printf("\n");
-    printf("===============================================\n");
-    printf("          Priority Scheduling Demo\n");
-    printf("===============================================\n");
+    print_header("Priority Scheduling Demo");
 
-    printf(
-        "[Demo] Higher-priority fibers receive more\n"
-        "       scheduling opportunities.\n"
+    print_info(
+        "Higher-priority fibers receive more scheduling opportunities."
     );
 
-    printf(
-        "[Demo] Priority values: LOW=1, NORMAL=2, HIGH=3.\n\n"
+    print_info(
+        "Priority values: LOW=1, NORMAL=2, HIGH=3."
     );
 
     if (fiber_library_init() != 0) {
-        printf(
-            "[Demo] Failed to initialize FiberLib.\n"
-        );
-
+        print_error("Failed to initialize FiberLib.");
+        pause_before_menu();
         return;
     }
 
@@ -344,11 +380,10 @@ static void priority_scheduling_demo(void)
         fiber_create(priority_demo_worker, &low_config);
 
     if (high == 0 || normal == 0 || low == 0) {
-        printf(
-            "[Demo] Failed to create priority fibers.\n"
-        );
+        print_error("Failed to create priority fibers.");
 
         fiber_library_shutdown();
+        pause_before_menu();
 
         return;
     }
@@ -369,26 +404,30 @@ static void priority_scheduling_demo(void)
     );
 
     printf(
-        "[Demo] Created HIGH, NORMAL and LOW priority fibers.\n"
+        "\n[Application] Created HIGH, NORMAL and LOW priority fibers.\n"
     );
 
     fiber_debug_dump();
 
     printf(
-        "\n[Demo] Starting priority-aware scheduler...\n\n"
+        "\n[Application] Starting priority-aware scheduler...\n\n"
     );
 
     fiber_schedule();
 
     printf(
-        "\n[Demo] Priority scheduling demonstration completed.\n"
+        "\n[Application] Priority scheduling demonstration completed.\n"
     );
 
     fiber_stats_dump();
 
     fiber_library_shutdown();
 
-    printf("\n");
+    print_success(
+        "Priority scheduling demonstration completed successfully."
+    );
+
+    pause_before_menu();
 }
 
 /* =========================================================
@@ -426,30 +465,23 @@ static void aging_demo_worker(void *arg)
 
 static void priority_aging_demo(void)
 {
-    printf("\n");
-    printf("===============================================\n");
-    printf("             Priority Aging Demo\n");
-    printf("===============================================\n");
+    print_header("Priority Aging Demo");
 
-    printf(
-        "[Demo] Aging prevents low-priority fibers\n"
-        "       from being permanently starved.\n"
+    print_info(
+        "Aging prevents low-priority fibers from being permanently starved."
     );
 
-    printf(
-        "[Demo] Waiting fibers accumulate aging points.\n"
+    print_info(
+        "Waiting fibers accumulate aging points."
     );
 
-    printf(
-        "[Demo] Once aging reaches the scheduler threshold,\n"
-        "       the effective priority of the fiber increases.\n\n"
+    print_info(
+        "Aging can increase the effective scheduling priority."
     );
 
     if (fiber_library_init() != 0) {
-        printf(
-            "[Demo] Failed to initialize FiberLib.\n"
-        );
-
+        print_error("Failed to initialize FiberLib.");
+        pause_before_menu();
         return;
     }
 
@@ -481,11 +513,12 @@ static void priority_aging_demo(void)
         fiber_create(aging_demo_worker, &low_config);
 
     if (high == 0 || normal == 0 || low == 0) {
-        printf(
-            "[Demo] Failed to create aging demonstration fibers.\n"
+        print_error(
+            "Failed to create aging demonstration fibers."
         );
 
         fiber_library_shutdown();
+        pause_before_menu();
 
         return;
     }
@@ -506,27 +539,27 @@ static void priority_aging_demo(void)
     );
 
     printf(
-        "[Demo] Created HIGH, NORMAL and LOW priority fibers.\n"
+        "\n[Application] Created HIGH, NORMAL and LOW priority fibers.\n"
     );
 
     printf(
-        "[Demo] The LOW priority fiber will demonstrate aging.\n\n"
+        "[Application] The LOW priority fiber will demonstrate aging.\n\n"
     );
 
     fiber_debug_dump();
 
     printf(
-        "\n[Demo] Starting scheduler with priority aging...\n\n"
+        "\n[Application] Starting scheduler with priority aging...\n\n"
     );
 
     fiber_schedule();
 
     printf(
-        "\n[Demo] Priority aging demonstration completed.\n"
+        "\n[Application] Priority aging demonstration completed.\n"
     );
 
     printf(
-        "[Demo] Final fiber state:\n\n"
+        "\n[Application] Final fiber state:\n\n"
     );
 
     fiber_debug_dump();
@@ -535,7 +568,11 @@ static void priority_aging_demo(void)
 
     fiber_library_shutdown();
 
-    printf("\n");
+    print_success(
+        "Priority aging demonstration completed successfully."
+    );
+
+    pause_before_menu();
 }
 
 /* =========================================================
@@ -544,16 +581,11 @@ static void priority_aging_demo(void)
 
 static void run_application(void)
 {
-    printf("\n");
-    printf("===============================================\n");
-    printf("          Running FiberLib Application\n");
-    printf("===============================================\n");
+    print_header("Running FiberLib Application");
 
     if (fiber_library_init() != 0) {
-        printf(
-            "[Application] Failed to initialize FiberLib.\n"
-        );
-
+        print_error("Failed to initialize FiberLib.");
+        pause_before_menu();
         return;
     }
 
@@ -573,11 +605,12 @@ static void run_application(void)
         logger == 0 ||
         report == 0) {
 
-        printf(
-            "[Application] Failed to create application fibers.\n"
+        print_error(
+            "Failed to create application fibers."
         );
 
         fiber_library_shutdown();
+        pause_before_menu();
 
         return;
     }
@@ -617,7 +650,11 @@ static void run_application(void)
 
     fiber_library_shutdown();
 
-    printf("\n");
+    print_success(
+        "FiberLib application completed successfully."
+    );
+
+    pause_before_menu();
 }
 
 /* =========================================================
@@ -628,30 +665,27 @@ static void create_custom_fiber(void)
 {
     int count;
 
-    printf("\n");
-    printf("===============================================\n");
-    printf("             Create Custom Fiber(s)\n");
-    printf("===============================================\n");
+    print_header("Create Custom Fiber(s)");
 
     printf(
         "How many fibers do you want to create? (1-10): "
     );
 
     if (scanf("%d", &count) != 1) {
-        printf(
-            "[Application] Invalid input.\n"
-        );
+        print_error("Invalid input.");
 
-        while (getchar() != '\n') {
-        }
+        clear_input_buffer();
+        pause_before_menu();
 
         return;
     }
 
     if (count < 1 || count > 10) {
-        printf(
-            "[Application] Please enter a number between 1 and 10.\n"
+        print_error(
+            "Please enter a number between 1 and 10."
         );
+
+        pause_before_menu();
 
         return;
     }
@@ -683,12 +717,10 @@ static void create_custom_fiber(void)
                 &configs[i].steps
             ) != 1) {
 
-            printf(
-                "[Application] Invalid step count.\n"
-            );
+            print_error("Invalid step count.");
 
-            while (getchar() != '\n') {
-            }
+            clear_input_buffer();
+            pause_before_menu();
 
             return;
         }
@@ -708,12 +740,10 @@ static void create_custom_fiber(void)
                 &priority
             ) != 1) {
 
-            printf(
-                "[Application] Invalid priority.\n"
-            );
+            print_error("Invalid priority.");
 
-            while (getchar() != '\n') {
-            }
+            clear_input_buffer();
+            pause_before_menu();
 
             return;
         }
@@ -775,10 +805,8 @@ static void create_custom_fiber(void)
     }
 
     if (fiber_library_init() != 0) {
-        printf(
-            "[Application] Failed to initialize FiberLib.\n"
-        );
-
+        print_error("Failed to initialize FiberLib.");
+        pause_before_menu();
         return;
     }
 
@@ -796,6 +824,7 @@ static void create_custom_fiber(void)
             );
 
             fiber_library_shutdown();
+            pause_before_menu();
 
             return;
         }
@@ -816,8 +845,7 @@ static void create_custom_fiber(void)
                 "[Application] Invalid priority. Using NORMAL.\n"
             );
 
-            while (getchar() != '\n') {
-            }
+            clear_input_buffer();
 
             priority = 2;
         }
@@ -852,19 +880,15 @@ static void create_custom_fiber(void)
 
     fiber_library_shutdown();
 
-    printf("\n");
+    print_success(
+        "Custom fiber execution completed successfully."
+    );
+
+    pause_before_menu();
 }
 
 /* =========================================================
  * Synchronization Demo
- *
- * Demonstrates cooperative mutual exclusion at the
- * application level using a shared lock owner.
- *
- * FiberLib currently provides fiber_yield() and fiber IDs,
- * so this demo builds a simple cooperative lock on top of
- * those primitives rather than pretending FiberLib already
- * contains a mutex API.
  * ========================================================= */
 
 typedef struct {
@@ -973,14 +997,6 @@ static void synchronization_worker(void *arg)
             old_value
         );
 
-        /*
-         * Yield while holding the lock.
-         *
-         * This makes the synchronization demonstration
-         * visible: another fiber may run, but it cannot
-         * enter the critical section because this fiber
-         * still owns the lock.
-         */
         fiber_yield();
 
         *(config->shared_counter) =
@@ -1016,29 +1032,23 @@ static void synchronization_worker(void *arg)
 
 static void synchronization_demo(void)
 {
-    printf("\n");
-    printf("===============================================\n");
-    printf("           Synchronization Demo\n");
-    printf("===============================================\n");
+    print_header("Synchronization Demo");
 
-    printf(
-        "[Demo] Two fibers will compete for one shared resource.\n"
+    print_info(
+        "Two fibers will compete for one shared resource."
     );
 
-    printf(
-        "[Demo] A cooperative lock protects the critical section.\n"
+    print_info(
+        "A cooperative lock protects the critical section."
     );
 
-    printf(
-        "[Demo] The shared counter is updated only while a fiber\n"
-        "       owns the lock.\n\n"
+    print_info(
+        "The shared counter is updated only while a fiber owns the lock."
     );
 
     if (fiber_library_init() != 0) {
-        printf(
-            "[Demo] Failed to initialize FiberLib.\n"
-        );
-
+        print_error("Failed to initialize FiberLib.");
+        pause_before_menu();
         return;
     }
 
@@ -1074,11 +1084,12 @@ static void synchronization_demo(void)
     if (worker_a_id == 0 ||
         worker_b_id == 0) {
 
-        printf(
-            "[Demo] Failed to create synchronization fibers.\n"
+        print_error(
+            "Failed to create synchronization fibers."
         );
 
         fiber_library_shutdown();
+        pause_before_menu();
 
         return;
     }
@@ -1097,38 +1108,38 @@ static void synchronization_demo(void)
     );
 
     printf(
-        "[Demo] Created Worker-A (Fiber %u) and "
+        "\n[Application] Created Worker-A (Fiber %u) and "
         "Worker-B (Fiber %u).\n",
         worker_a_id,
         worker_b_id
     );
 
     printf(
-        "[Demo] Both fibers will perform 3 protected operations.\n"
+        "[Application] Both fibers will perform 3 protected operations.\n"
     );
 
     printf(
-        "[Demo] Expected final counter value: 6\n\n"
+        "[Application] Expected final counter value: 6\n\n"
     );
 
     fiber_debug_dump();
 
     printf(
-        "\n[Demo] Starting synchronization demonstration...\n\n"
+        "\n[Application] Starting synchronization demonstration...\n\n"
     );
 
     fiber_schedule();
 
     printf(
-        "\n===============================================\n"
+        "\n==================================================\n"
     );
 
     printf(
-        "        Synchronization Result\n"
+        " Synchronization Result\n"
     );
 
     printf(
-        "===============================================\n"
+        "==================================================\n"
     );
 
     printf(
@@ -1137,24 +1148,24 @@ static void synchronization_demo(void)
     );
 
     printf(
-        "Expected counter      : 6\n"
+        "Expected counter     : 6\n"
     );
 
     if (synchronization_counter == 6) {
         printf(
-            "Result                : PASS\n"
+            "Result               : PASS\n"
         );
 
-        printf(
-            "[Demo] All protected updates completed successfully.\n"
+        print_success(
+            "All protected updates completed successfully."
         );
     } else {
         printf(
-            "Result                : FAIL\n"
+            "Result               : FAIL\n"
         );
 
-        printf(
-            "[Demo] Shared counter did not reach the expected value.\n"
+        print_error(
+            "Shared counter did not reach the expected value."
         );
     }
 
@@ -1166,7 +1177,7 @@ static void synchronization_demo(void)
 
     sync_lock.owner = 0;
 
-    printf("\n");
+    pause_before_menu();
 }
 
 /* =========================================================
@@ -1205,23 +1216,17 @@ static void information_demo_worker(void *arg)
     );
 }
 
-static void fiber_information(void)
+static void fiber_information_demo(void)
 {
-    printf("\n");
-    printf("===============================================\n");
-    printf("              Fiber Information\n");
-    printf("===============================================\n");
+    print_header("Fiber Information Demonstration");
 
-    printf(
-        "[Info] This demonstration displays the internal\n"
-        "       runtime information of active fibers.\n\n"
+    print_info(
+        "This demonstration displays the internal runtime information of fibers."
     );
 
     if (fiber_library_init() != 0) {
-        printf(
-            "[Info] Unable to initialize FiberLib.\n"
-        );
-
+        print_error("Unable to initialize FiberLib.");
+        pause_before_menu();
         return;
     }
 
@@ -1262,11 +1267,12 @@ static void fiber_information(void)
         fiber_b == 0 ||
         fiber_c == 0) {
 
-        printf(
-            "[Info] Failed to create information-demo fibers.\n"
+        print_error(
+            "Failed to create information-demo fibers."
         );
 
         fiber_library_shutdown();
+        pause_before_menu();
 
         return;
     }
@@ -1287,87 +1293,313 @@ static void fiber_information(void)
     );
 
     printf(
-        "[Info] Created three demonstration fibers.\n"
+        "\n[Application] Created three demonstration fibers.\n"
     );
 
     printf(
-        "[Info] Priority configuration:\n"
+        "[Application] Priority configuration:\n"
     );
 
     printf(
-        "       Fiber %u -> HIGH\n",
+        "  Fiber %u -> HIGH\n",
         fiber_a
     );
 
     printf(
-        "       Fiber %u -> NORMAL\n",
+        "  Fiber %u -> NORMAL\n",
         fiber_b
     );
 
     printf(
-        "       Fiber %u -> LOW\n",
+        "  Fiber %u -> LOW\n",
         fiber_c
     );
 
     printf(
-        "\n[Info] Fiber state before scheduling:\n\n"
+        "\n[Application] Fiber state before scheduling:\n\n"
     );
 
     fiber_debug_dump();
 
     printf(
-        "\n[Info] Information displayed by FiberLib includes:\n"
+        "\n[Application] Information displayed by FiberLib includes:\n"
     );
 
     printf(
-        "       - Fiber ID (TID)\n"
+        "  - Fiber ID (TID)\n"
     );
 
     printf(
-        "       - Lifecycle state\n"
+        "  - Lifecycle state\n"
     );
 
     printf(
-        "       - Scheduling priority\n"
+        "  - Scheduling priority\n"
     );
 
     printf(
-        "       - Context switch count\n"
+        "  - Context switch count\n"
     );
 
     printf(
-        "       - Aging value\n"
+        "  - Aging value\n"
     );
 
     printf(
-        "       - Allocated stack size\n"
+        "  - Allocated stack size\n"
     );
 
     printf(
-        "\n[Info] Starting fibers so their runtime state can be observed...\n\n"
+        "\n[Application] Starting fibers...\n\n"
     );
 
     fiber_schedule();
 
     printf(
-        "\n[Info] All information-demo fibers have finished.\n"
+        "\n[Application] All information-demo fibers have finished.\n"
     );
 
     printf(
-        "\n[Info] Final FiberLib state:\n\n"
+        "\n[Application] Final FiberLib state:\n\n"
     );
 
     fiber_debug_dump();
 
     printf(
-        "\n[Info] Runtime statistics:\n\n"
+        "\n[Application] Runtime statistics:\n\n"
     );
 
     fiber_stats_dump();
 
     fiber_library_shutdown();
 
-    printf("\n");
+    print_success(
+        "Fiber information demonstration completed."
+    );
+
+    pause_before_menu();
+}
+
+/* =========================================================
+ * Fiber Information Submenu
+ * ========================================================= */
+
+static void fiber_information_menu(void)
+{
+    int choice;
+
+    while (1) {
+        print_header("Fiber Information");
+
+        printf(
+            "1. Run Fiber Information Demo\n"
+        );
+
+        printf(
+            "2. View Runtime Statistics\n"
+        );
+
+        printf(
+            "3. View Fiber State Information\n"
+        );
+
+        printf(
+            "4. Back to Main Menu\n"
+        );
+
+        printf(
+            "==================================================\n"
+        );
+
+        printf(
+            "Enter your choice: "
+        );
+
+        if (scanf("%d", &choice) != 1) {
+            print_error(
+                "Invalid input. Please enter a number."
+            );
+
+            clear_input_buffer();
+            continue;
+        }
+
+        switch (choice) {
+            case 1:
+                fiber_information_demo();
+                break;
+
+            case 2:
+                print_header("Runtime Statistics");
+
+                if (fiber_library_init() != 0) {
+                    print_error(
+                        "Unable to initialize FiberLib."
+                    );
+                    pause_before_menu();
+                    break;
+                }
+
+                print_info(
+                    "No fibers are currently running. "
+                    "The values below represent a fresh runtime."
+                );
+
+                fiber_stats_dump();
+
+                fiber_library_shutdown();
+
+                pause_before_menu();
+                break;
+
+            case 3:
+                print_header("Fiber State Information");
+
+                if (fiber_library_init() != 0) {
+                    print_error(
+                        "Unable to initialize FiberLib."
+                    );
+                    pause_before_menu();
+                    break;
+                }
+
+                print_info(
+                    "The following table shows the current FiberLib state."
+                );
+
+                fiber_debug_dump();
+
+                fiber_library_shutdown();
+
+                pause_before_menu();
+                break;
+
+            case 4:
+                return;
+
+            default:
+                print_error(
+                    "Invalid choice. Please select 1-4."
+                );
+        }
+    }
+}
+
+/* =========================================================
+ * Scheduling Statistics Demo
+ * ========================================================= */
+
+static void statistics_worker(void *arg)
+{
+    char *name = (char *)arg;
+
+    for (int i = 1; i <= 5; i++) {
+        printf(
+            "[Statistics Demo] Fiber %s -> Work unit %d/5\n",
+            name,
+            i
+        );
+
+        fiber_yield();
+    }
+
+    printf(
+        "[Statistics Demo] Fiber %s completed.\n",
+        name
+    );
+}
+
+static void scheduling_statistics(void)
+{
+    print_header("Scheduling Statistics");
+
+    print_info(
+        "This demonstration collects scheduler runtime statistics."
+    );
+
+    print_info(
+        "The statistics include dispatches, yields, context switches, "
+        "and completed fibers."
+    );
+
+    if (fiber_library_init() != 0) {
+        print_error("Failed to initialize FiberLib.");
+        pause_before_menu();
+        return;
+    }
+
+    char fiber_a[] = "Stats-A";
+    char fiber_b[] = "Stats-B";
+    char fiber_c[] = "Stats-C";
+
+    fiber_id_t a =
+        fiber_create(statistics_worker, fiber_a);
+
+    fiber_id_t b =
+        fiber_create(statistics_worker, fiber_b);
+
+    fiber_id_t c =
+        fiber_create(statistics_worker, fiber_c);
+
+    if (a == 0 || b == 0 || c == 0) {
+        print_error(
+            "Failed to create statistics demonstration fibers."
+        );
+
+        fiber_library_shutdown();
+        pause_before_menu();
+
+        return;
+    }
+
+    fiber_set_priority(
+        a,
+        FIBER_PRIORITY_NORMAL
+    );
+
+    fiber_set_priority(
+        b,
+        FIBER_PRIORITY_NORMAL
+    );
+
+    fiber_set_priority(
+        c,
+        FIBER_PRIORITY_NORMAL
+    );
+
+    printf(
+        "\n[Statistics Demo] Created three fibers.\n"
+    );
+
+    fiber_debug_dump();
+
+    printf(
+        "\n[Statistics Demo] Starting scheduler...\n\n"
+    );
+
+    fiber_schedule();
+
+    printf(
+        "\n==================================================\n"
+    );
+
+    printf(
+        " Scheduling Statistics Result\n"
+    );
+
+    printf(
+        "==================================================\n"
+    );
+
+    fiber_stats_dump();
+
+    fiber_library_shutdown();
+
+    print_success(
+        "Scheduling statistics demonstration completed."
+    );
+
+    pause_before_menu();
 }
 
 /* =========================================================
@@ -1376,10 +1608,7 @@ static void fiber_information(void)
 
 static void show_features(void)
 {
-    printf("\n");
-    printf("===============================================\n");
-    printf("             FiberLib Features\n");
-    printf("===============================================\n");
+    print_header("FiberLib Features");
 
     printf(
         "1.  User-level fiber creation\n"
@@ -1445,7 +1674,29 @@ static void show_features(void)
         "16. Interactive application interface\n"
     );
 
+    printf(
+        "17. Scheduling statistics demonstration\n"
+    );
+
+    printf(
+        "18. Fiber information submenu\n"
+    );
+
+    printf(
+        "19. User-friendly interactive output\n"
+    );
+
+    printf(
+        "20. Return-to-menu workflow\n"
+    );
+
     printf("\n");
+
+    print_success(
+        "FiberLib feature overview displayed."
+    );
+
+    pause_before_menu();
 }
 
 /* =========================================================
@@ -1457,68 +1708,62 @@ int main(void)
     int choice;
 
     while (1) {
-        printf("\n");
-        printf("===============================================\n");
-        printf("                 FiberLib\n");
-        printf("          User-Level Thread Library\n");
-        printf("===============================================\n");
+        print_header("FiberLib - User-Level Thread Library");
 
         printf(
-            "1. Run FiberLib Application\n"
+            "1.  Run FiberLib Application\n"
         );
 
         printf(
-            "2. Create Custom Fiber(s)\n"
+            "2.  Create Custom Fiber(s)\n"
         );
 
         printf(
-            "3. Run Scheduling Demo\n"
+            "3.  Run Scheduling Demo\n"
         );
 
         printf(
-            "4. Run Synchronization Demo\n"
+            "4.  Run Synchronization Demo\n"
         );
 
         printf(
-            "5. View Fiber Information\n"
+            "5.  Fiber Information\n"
         );
 
         printf(
-            "6. Show Library Features\n"
+            "6.  Scheduling Statistics\n"
         );
 
         printf(
-            "7. Priority Scheduling Demo\n"
+            "7.  Show Library Features\n"
         );
 
         printf(
-            "8. Priority Aging Demo\n"
+            "8.  Priority Scheduling Demo\n"
         );
 
         printf(
-            "9. Exit\n"
+            "9.  Priority Aging Demo\n"
         );
 
         printf(
-            "===============================================\n"
+            "10. Exit\n"
+        );
+
+        printf(
+            "==================================================\n"
         );
 
         printf(
             "Enter your choice: "
         );
 
-        if (scanf(
-                "%d",
-                &choice
-            ) != 1) {
-
-            printf(
-                "\n[Application] Invalid input. "
-                "Please enter a number.\n"
+        if (scanf("%d", &choice) != 1) {
+            print_error(
+                "Invalid input. Please enter a number."
             );
 
-            while (getchar() != '\n') {
-            }
+            clear_input_buffer();
 
             continue;
         }
@@ -1541,32 +1786,47 @@ int main(void)
                 break;
 
             case 5:
-                fiber_information();
+                fiber_information_menu();
                 break;
 
             case 6:
-                show_features();
+                scheduling_statistics();
                 break;
 
             case 7:
-                priority_scheduling_demo();
+                show_features();
                 break;
 
             case 8:
-                priority_aging_demo();
+                priority_scheduling_demo();
                 break;
 
             case 9:
+                priority_aging_demo();
+                break;
+
+            case 10:
                 printf(
-                    "\nExiting FiberLib. Goodbye!\n"
+                    "\n==================================================\n"
+                );
+
+                printf(
+                    " Thank you for using FiberLib.\n"
+                );
+
+                printf(
+                    " Exiting safely...\n"
+                );
+
+                printf(
+                    "==================================================\n"
                 );
 
                 return 0;
 
             default:
-                printf(
-                    "\n[Application] Invalid choice. "
-                    "Please select 1-9.\n"
+                print_error(
+                    "Invalid choice. Please select 1-10."
                 );
         }
     }
