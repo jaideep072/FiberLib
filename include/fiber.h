@@ -81,6 +81,16 @@ void fiber_yield(void);
 int fiber_join(fiber_id_t fiber_id);
 
 /*
+ * Check whether the scheduler detected
+ * a deadlock during its last execution.
+ *
+ * Returns:
+ *   1  : deadlock detected
+ *   0  : no deadlock detected
+ */
+int fiber_deadlock_detected(void);
+
+/*
  * Display the current internal state
  * of all active fibers.
  */

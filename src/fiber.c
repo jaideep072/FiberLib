@@ -37,6 +37,8 @@ static ucontext_t scheduler_context;
 static int library_initialized = 0;
 static int scheduler_running = 0;
 
+static int deadlock_detected = 0;
+
 static fiber_control_block_t *current_fiber = NULL;
 
 /*
@@ -47,6 +49,9 @@ static unsigned long total_yields = 0;
 static unsigned long total_context_switches = 0;
 static unsigned long total_completed = 0;
 
+/*
+ * Convert a fiber state into a readable string.
+ */
 static const char *state_to_string(fiber_state_t state)
 {
     switch (state) {
@@ -67,6 +72,9 @@ static const char *state_to_string(fiber_state_t state)
     }
 }
 
+/*
+ * Convert a priority value into a readable string.
+ */
 static const char *priority_to_string(fiber_priority_t priority)
 {
     switch (priority) {
@@ -84,6 +92,9 @@ static const char *priority_to_string(fiber_priority_t priority)
     }
 }
 
+/*
+ * Reset the complete fiber table and scheduler state.
+ */
 static void initialize_fiber_table(void)
 {
     memset(fibers, 0, sizeof(fibers));
@@ -96,17 +107,23 @@ static void initialize_fiber_table(void)
     next_fiber_id = 1;
     scheduler_cursor = 0;
 
+    deadlock_detected = 0;
+
     total_dispatches = 0;
     total_yields = 0;
     total_context_switches = 0;
     total_completed = 0;
 }
 
+/*
+ * Find an active fiber by ID.
+ */
 static fiber_control_block_t *find_fiber(fiber_id_t id)
 {
     for (unsigned int i = 0; i < MAX_FIBERS; i++) {
         if (fibers[i].id == id &&
             fibers[i].state != FIBER_ZOMBIE) {
+
             return &fibers[i];
         }
     }
@@ -114,6 +131,9 @@ static fiber_control_block_t *find_fiber(fiber_id_t id)
     return NULL;
 }
 
+/*
+ * Find a fiber regardless of its current state.
+ */
 static fiber_control_block_t *find_fiber_any_state(fiber_id_t id)
 {
     for (unsigned int i = 0; i < MAX_FIBERS; i++) {
@@ -125,6 +145,9 @@ static fiber_control_block_t *find_fiber_any_state(fiber_id_t id)
     return NULL;
 }
 
+/*
+ * Find an unused FCB slot.
+ */
 static fiber_control_block_t *allocate_fcb(void)
 {
     for (unsigned int i = 0; i < MAX_FIBERS; i++) {
@@ -136,6 +159,9 @@ static fiber_control_block_t *allocate_fcb(void)
     return NULL;
 }
 
+/*
+ * Release all resources associated with an FCB.
+ */
 static void release_fcb(fiber_control_block_t *fcb)
 {
     if (fcb == NULL) {
@@ -203,6 +229,9 @@ static fiber_control_block_t *find_next_ready(void)
     return NULL;
 }
 
+/*
+ * Wake fibers waiting for a completed fiber.
+ */
 static void wake_waiting_fibers(fiber_id_t completed_id)
 {
     for (unsigned int i = 0; i < MAX_FIBERS; i++) {
@@ -221,6 +250,74 @@ static void wake_waiting_fibers(fiber_id_t completed_id)
     }
 }
 
+/*
+ * Detect whether a blocked fiber is part of a circular
+ * wait-for dependency.
+ *
+ * Example:
+ *
+ * Fiber 1 -> Fiber 2
+ * Fiber 2 -> Fiber 1
+ *
+ * This forms a cycle and therefore a deadlock.
+ */
+static int has_wait_cycle(
+    fiber_id_t start_id
+)
+{
+    fiber_id_t current_id = start_id;
+
+    for (unsigned int depth = 0; depth < MAX_FIBERS; depth++) {
+        fiber_control_block_t *current =
+            find_fiber(current_id);
+
+        if (current == NULL ||
+            current->state != FIBER_BLOCKED) {
+
+            return 0;
+        }
+
+        fiber_id_t waiting_for = current->waiting_for;
+
+        if (waiting_for == 0) {
+            return 0;
+        }
+
+        if (waiting_for == start_id) {
+            return 1;
+        }
+
+        current_id = waiting_for;
+    }
+
+    /*
+     * Reaching MAX_FIBERS without terminating the chain
+     * means the dependency graph contains a cycle.
+     */
+    return 1;
+}
+
+/*
+ * Check all blocked fibers for circular dependencies.
+ */
+static int detect_deadlock(void)
+{
+    for (unsigned int i = 0; i < MAX_FIBERS; i++) {
+        if (fibers[i].state == FIBER_BLOCKED &&
+            fibers[i].waiting_for != 0) {
+
+            if (has_wait_cycle(fibers[i].id)) {
+                return 1;
+            }
+        }
+    }
+
+    return 0;
+}
+
+/*
+ * Entry point executed by each fiber.
+ */
 static void fiber_entry_point(fiber_id_t id)
 {
     fiber_control_block_t *fcb = find_fiber(id);
@@ -257,6 +354,9 @@ static void fiber_entry_point(fiber_id_t id)
     setcontext(&scheduler_context);
 }
 
+/*
+ * Voluntarily yield execution to the scheduler.
+ */
 void fiber_yield(void)
 {
     if (!scheduler_running || current_fiber == NULL) {
@@ -273,37 +373,48 @@ void fiber_yield(void)
 
     current_fiber = NULL;
 
-    if (swapcontext(&previous->context, &scheduler_context) == -1) {
+    if (swapcontext(
+            &previous->context,
+            &scheduler_context) == -1) {
+
         perror("[FiberLib] swapcontext");
     }
 }
 
+/*
+ * Wait for another fiber to complete.
+ */
 int fiber_join(fiber_id_t fiber_id)
 {
     if (!library_initialized) {
         fprintf(stderr,
                 "[FiberLib] Error: library is not initialized.\n");
+
         return -1;
     }
 
     if (current_fiber == NULL) {
         fprintf(stderr,
                 "[FiberLib] Error: fiber_join() must be called from a fiber.\n");
+
         return -1;
     }
 
     if (current_fiber->id == fiber_id) {
         fprintf(stderr,
                 "[FiberLib] Error: a fiber cannot join itself.\n");
+
         return -1;
     }
 
-    fiber_control_block_t *target = find_fiber_any_state(fiber_id);
+    fiber_control_block_t *target =
+        find_fiber_any_state(fiber_id);
 
     if (target == NULL || target->id == 0) {
         fprintf(stderr,
                 "[FiberLib] Error: invalid fiber ID %u.\n",
                 fiber_id);
+
         return -1;
     }
 
@@ -320,20 +431,40 @@ int fiber_join(fiber_id_t fiber_id)
         fiber_id
     );
 
+    /*
+     * Detect a circular wait immediately after creating
+     * the dependency.
+     */
+    if (detect_deadlock()) {
+        deadlock_detected = 1;
+
+        fprintf(
+            stderr,
+            "[FiberLib] DEADLOCK DETECTED: circular fiber dependency.\n"
+        );
+    }
+
     fiber_control_block_t *previous = current_fiber;
 
     current_fiber = NULL;
 
     total_context_switches++;
 
-    if (swapcontext(&previous->context, &scheduler_context) == -1) {
+    if (swapcontext(
+            &previous->context,
+            &scheduler_context) == -1) {
+
         perror("[FiberLib] swapcontext");
+
         return -1;
     }
 
     return 0;
 }
 
+/*
+ * Set the scheduling priority of a fiber.
+ */
 int fiber_set_priority(
     fiber_id_t fiber_id,
     fiber_priority_t priority)
@@ -341,6 +472,7 @@ int fiber_set_priority(
     if (!library_initialized) {
         fprintf(stderr,
                 "[FiberLib] Error: library is not initialized.\n");
+
         return -1;
     }
 
@@ -353,7 +485,8 @@ int fiber_set_priority(
         return -1;
     }
 
-    fiber_control_block_t *fcb = find_fiber(fiber_id);
+    fiber_control_block_t *fcb =
+        find_fiber(fiber_id);
 
     if (fcb == NULL) {
         fprintf(stderr,
@@ -374,30 +507,55 @@ int fiber_set_priority(
     return 0;
 }
 
+/*
+ * Start the user-space scheduler.
+ */
 void fiber_schedule(void)
 {
     if (!library_initialized) {
         fprintf(stderr,
                 "[FiberLib] Error: library is not initialized.\n");
+
         return;
     }
 
     if (scheduler_running) {
         fprintf(stderr,
                 "[FiberLib] Error: scheduler is already running.\n");
+
         return;
     }
 
     scheduler_running = 1;
 
+    deadlock_detected = 0;
+
     printf("\n[FiberLib] Scheduler started.\n");
 
     while (fiber_count > 0) {
-        fiber_control_block_t *next = find_next_ready();
+        fiber_control_block_t *next =
+            find_next_ready();
 
         if (next == NULL) {
-            fprintf(stderr,
-                    "[FiberLib] Scheduler stopped: no READY fibers.\n");
+            /*
+             * No READY fibers remain while active fibers
+             * still exist. This means the scheduler cannot
+             * make progress.
+             */
+            if (detect_deadlock()) {
+                deadlock_detected = 1;
+
+                fprintf(
+                    stderr,
+                    "[FiberLib] DEADLOCK DETECTED: no READY fibers remain.\n"
+                );
+            } else {
+                fprintf(
+                    stderr,
+                    "[FiberLib] Scheduler stopped: no READY fibers.\n"
+                );
+            }
+
             break;
         }
 
@@ -408,8 +566,12 @@ void fiber_schedule(void)
         total_dispatches++;
         total_context_switches++;
 
-        if (swapcontext(&scheduler_context, &next->context) == -1) {
+        if (swapcontext(
+                &scheduler_context,
+                &next->context) == -1) {
+
             perror("[FiberLib] swapcontext");
+
             break;
         }
 
@@ -421,6 +583,18 @@ void fiber_schedule(void)
     printf("[FiberLib] Scheduler finished.\n");
 }
 
+/*
+ * Return whether the scheduler detected a deadlock
+ * during its most recent execution.
+ */
+int fiber_deadlock_detected(void)
+{
+    return deadlock_detected;
+}
+
+/*
+ * Display the current internal state of all active fibers.
+ */
 void fiber_debug_dump(void)
 {
     printf("\n========== FiberLib State ==========\n");
@@ -431,7 +605,11 @@ void fiber_debug_dump(void)
     printf("Scheduler running   : %s\n",
            scheduler_running ? "YES" : "NO");
 
-    printf("Active fibers       : %u\n", fiber_count);
+    printf("Deadlock detected   : %s\n",
+           deadlock_detected ? "YES" : "NO");
+
+    printf("Active fibers       : %u\n",
+           fiber_count);
 
     printf("------------------------------------\n");
 
@@ -460,6 +638,9 @@ void fiber_debug_dump(void)
     printf("====================================\n\n");
 }
 
+/*
+ * Display runtime scheduler statistics.
+ */
 void fiber_stats_dump(void)
 {
     printf("\n========== FiberLib Statistics ==========\n");
@@ -482,6 +663,9 @@ void fiber_stats_dump(void)
     printf("==========================================\n\n");
 }
 
+/*
+ * Initialize the FiberLib runtime.
+ */
 int fiber_library_init(void)
 {
     if (library_initialized) {
@@ -502,31 +686,41 @@ int fiber_library_init(void)
     return 0;
 }
 
-fiber_id_t fiber_create(fiber_function_t function, void *arg)
+/*
+ * Create a new fiber.
+ */
+fiber_id_t fiber_create(
+    fiber_function_t function,
+    void *arg)
 {
     if (!library_initialized) {
         fprintf(stderr,
                 "[FiberLib] Error: library is not initialized.\n");
+
         return 0;
     }
 
     if (function == NULL) {
         fprintf(stderr,
                 "[FiberLib] Error: fiber function cannot be NULL.\n");
+
         return 0;
     }
 
     if (fiber_count >= MAX_FIBERS) {
         fprintf(stderr,
                 "[FiberLib] Error: maximum fiber limit reached.\n");
+
         return 0;
     }
 
-    fiber_control_block_t *fcb = allocate_fcb();
+    fiber_control_block_t *fcb =
+        allocate_fcb();
 
     if (fcb == NULL) {
         fprintf(stderr,
                 "[FiberLib] Error: unable to allocate FCB.\n");
+
         return 0;
     }
 
@@ -535,6 +729,7 @@ fiber_id_t fiber_create(fiber_function_t function, void *arg)
     if (fcb->stack == NULL) {
         fprintf(stderr,
                 "[FiberLib] Error: unable to allocate fiber stack.\n");
+
         return 0;
     }
 
@@ -581,6 +776,9 @@ fiber_id_t fiber_create(fiber_function_t function, void *arg)
     return fcb->id;
 }
 
+/*
+ * Shut down the FiberLib runtime.
+ */
 void fiber_library_shutdown(void)
 {
     if (!library_initialized) {
