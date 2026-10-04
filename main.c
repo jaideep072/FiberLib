@@ -1170,8 +1170,40 @@ static void synchronization_demo(void)
 }
 
 /* =========================================================
- * Fiber Information
+ * Fiber Information Demo
  * ========================================================= */
+
+typedef struct {
+    const char *name;
+    int steps;
+} information_demo_config_t;
+
+static void information_demo_worker(void *arg)
+{
+    information_demo_config_t *config =
+        (information_demo_config_t *)arg;
+
+    printf(
+        "\n[Information Demo] %s started.\n",
+        config->name
+    );
+
+    for (int i = 1; i <= config->steps; i++) {
+        printf(
+            "[Information Demo] %s executing step %d/%d\n",
+            config->name,
+            i,
+            config->steps
+        );
+
+        fiber_yield();
+    }
+
+    printf(
+        "[Information Demo] %s completed.\n",
+        config->name
+    );
+}
 
 static void fiber_information(void)
 {
@@ -1179,6 +1211,11 @@ static void fiber_information(void)
     printf("===============================================\n");
     printf("              Fiber Information\n");
     printf("===============================================\n");
+
+    printf(
+        "[Info] This demonstration displays the internal\n"
+        "       runtime information of active fibers.\n\n"
+    );
 
     if (fiber_library_init() != 0) {
         printf(
@@ -1188,11 +1225,145 @@ static void fiber_information(void)
         return;
     }
 
+    information_demo_config_t fiber_a_config = {
+        "Information-A",
+        2
+    };
+
+    information_demo_config_t fiber_b_config = {
+        "Information-B",
+        3
+    };
+
+    information_demo_config_t fiber_c_config = {
+        "Information-C",
+        2
+    };
+
+    fiber_id_t fiber_a =
+        fiber_create(
+            information_demo_worker,
+            &fiber_a_config
+        );
+
+    fiber_id_t fiber_b =
+        fiber_create(
+            information_demo_worker,
+            &fiber_b_config
+        );
+
+    fiber_id_t fiber_c =
+        fiber_create(
+            information_demo_worker,
+            &fiber_c_config
+        );
+
+    if (fiber_a == 0 ||
+        fiber_b == 0 ||
+        fiber_c == 0) {
+
+        printf(
+            "[Info] Failed to create information-demo fibers.\n"
+        );
+
+        fiber_library_shutdown();
+
+        return;
+    }
+
+    fiber_set_priority(
+        fiber_a,
+        FIBER_PRIORITY_HIGH
+    );
+
+    fiber_set_priority(
+        fiber_b,
+        FIBER_PRIORITY_NORMAL
+    );
+
+    fiber_set_priority(
+        fiber_c,
+        FIBER_PRIORITY_LOW
+    );
+
     printf(
-        "\n[Info] FiberLib initialized for information display.\n\n"
+        "[Info] Created three demonstration fibers.\n"
+    );
+
+    printf(
+        "[Info] Priority configuration:\n"
+    );
+
+    printf(
+        "       Fiber %u -> HIGH\n",
+        fiber_a
+    );
+
+    printf(
+        "       Fiber %u -> NORMAL\n",
+        fiber_b
+    );
+
+    printf(
+        "       Fiber %u -> LOW\n",
+        fiber_c
+    );
+
+    printf(
+        "\n[Info] Fiber state before scheduling:\n\n"
     );
 
     fiber_debug_dump();
+
+    printf(
+        "\n[Info] Information displayed by FiberLib includes:\n"
+    );
+
+    printf(
+        "       - Fiber ID (TID)\n"
+    );
+
+    printf(
+        "       - Lifecycle state\n"
+    );
+
+    printf(
+        "       - Scheduling priority\n"
+    );
+
+    printf(
+        "       - Context switch count\n"
+    );
+
+    printf(
+        "       - Aging value\n"
+    );
+
+    printf(
+        "       - Allocated stack size\n"
+    );
+
+    printf(
+        "\n[Info] Starting fibers so their runtime state can be observed...\n\n"
+    );
+
+    fiber_schedule();
+
+    printf(
+        "\n[Info] All information-demo fibers have finished.\n"
+    );
+
+    printf(
+        "\n[Info] Final FiberLib state:\n\n"
+    );
+
+    fiber_debug_dump();
+
+    printf(
+        "\n[Info] Runtime statistics:\n\n"
+    );
+
+    fiber_stats_dump();
 
     fiber_library_shutdown();
 
