@@ -33,3 +33,32 @@ build/
 core
 core.*
 tests/test_starvation
+
+# FiberLib build artifacts
+/fiberlib
+/src/*.o
+/examples/create_demo
+/examples/round_robin_demo
+/examples/priority_demo
+/examples/join_demo
+/examples/fiber_monitor
+/examples/trace_demo
+/examples/scheduler_dashboard
+/tests/test_init
+/tests/test_priority
+/tests/test_invalid_create
+/tests/test_self_join
+/tests/test_invalid_join
+/tests/test_uninitialized
+/tests/test_double_init
+/tests/test_double_shutdown
+/tests/test_join_completed
+/tests/test_deadlock
+/tests/test_max_fibers
+/tests/test_starvation
+/tests/test_round_robin
+/tests/test_snapshot
+
+# Local backup files
+*.before_*
+*.save

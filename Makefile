@@ -9,7 +9,9 @@ EXAMPLES = \
 	examples/round_robin_demo \
 	examples/priority_demo \
 	examples/join_demo \
-	examples/fiber_monitor
+	examples/fiber_monitor \
+	examples/trace_demo \
+	examples/scheduler_dashboard
 
 TESTS = \
 	tests/test_init \
@@ -23,7 +25,9 @@ TESTS = \
 	tests/test_join_completed \
 	tests/test_deadlock \
 	tests/test_max_fibers \
-	tests/test_starvation
+	tests/test_starvation \
+        tests/test_round_robin \
+        tests/test_snapshot
 
 all: $(APP) $(LIB) examples tests
 
@@ -31,7 +35,7 @@ $(APP): main.c $(LIB)
 	$(CC) $(CFLAGS) main.c $(LIB) -o $(APP)
 
 $(LIB): src/fiber.c include/fiber.h
-	$(CC) $(CFLAGS) -c src/fiber.c -o src/fiber.o
+	$(CC) $(CFLAGS) -c src/fiber.c -o $(LIB)
 
 examples: $(EXAMPLES)
 
@@ -50,7 +54,11 @@ examples/join_demo: examples/join_demo.c $(LIB)
 examples/fiber_monitor: examples/fiber_monitor.c $(LIB)
 	$(CC) $(CFLAGS) $< $(LIB) -o $@
 
-tests: $(TESTS)
+examples/trace_demo: examples/trace_demo.c $(LIB)
+	$(CC) $(CFLAGS) $< $(LIB) -o $@
+
+examples/scheduler_dashboard: examples/scheduler_dashboard.c $(LIB)
+	$(CC) $(CFLAGS) $< $(LIB) -o $@
 
 tests/test_init: tests/test_init.c $(LIB)
 	$(CC) $(CFLAGS) $< $(LIB) -o $@
@@ -88,12 +96,19 @@ tests/test_max_fibers: tests/test_max_fibers.c $(LIB)
 tests/test_starvation: tests/test_starvation.c $(LIB)
 	$(CC) $(CFLAGS) $< $(LIB) -o $@
 
+tests/test_round_robin: tests/test_round_robin.c $(LIB)
+	$(CC) $(CFLAGS) $< $(LIB) -o $@
+
+tests/test_snapshot: tests/test_snapshot.c $(LIB)
+	$(CC) $(CFLAGS) $< $(LIB) -o $@
+
 test: $(TESTS)
-	@for test in $(TESTS); do \
+	@status=0; for test in $(TESTS); do \
 		echo "===== $$test ====="; \
-		./$$test; \
+		./$$test || status=1; \
 		echo; \
-	done
+	done; \
+	exit $$status
 
 clean:
 	rm -f $(APP)

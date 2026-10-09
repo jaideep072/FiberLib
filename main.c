@@ -1747,7 +1747,11 @@ int main(void)
         );
 
         printf(
-            "10. Exit\n"
+            "10. Live Scheduler Dashboard\n"
+        );
+
+        printf(
+            "11. Exit\n"
         );
 
         printf(
@@ -1805,7 +1809,29 @@ int main(void)
                 priority_aging_demo();
                 break;
 
-            case 10:
+            case 10: {
+                print_header("Live Scheduler Dashboard");
+
+                print_info(
+                    "Launching the live scheduler dashboard."
+                );
+
+                int status = system("./examples/scheduler_dashboard");
+
+                if (status == -1) {
+                    print_error(
+                        "Could not launch the scheduler dashboard."
+                    );
+                } else if (status != 0) {
+                    print_error(
+                        "The scheduler dashboard exited with an error."
+                    );
+                }
+
+                break;
+            }
+
+            case 11:
                 printf(
                     "\n==================================================\n"
                 );
