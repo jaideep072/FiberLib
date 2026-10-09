@@ -1,880 +1,467 @@
-# FiberLib — User-Level Thread Library
+# ⚡ FiberLib — A User-Level Thread Library in C
 
-FiberLib is a lightweight **user-level thread (fiber) library written in C**. It implements cooperative scheduling, priority-based scheduling, manual stack management, context switching, synchronization through `fiber_join()`, deadlock detection, priority aging, and runtime statistics completely in user space.
+<p align="center">
+  <strong>Build your own concurrency. Understand your own scheduler.</strong>
+</p>
 
-The project demonstrates how a thread scheduler and execution environment can be implemented without relying on kernel-level threads.
+<p align="center">
+  A lightweight user-level fiber library built from scratch in C, featuring context switching, multiple scheduling policies, priority aging, deadlock detection, event tracing, and a live scheduler dashboard.
+</p>
 
----
-
-## Features
-
-* User-level fibers
-* Manual fiber stack allocation
-* CPU context switching using POSIX `ucontext`
-* Cooperative scheduling
-* Priority-aware scheduling
-* Round-Robin scheduling
-* Three scheduling priorities:
-
-  * LOW
-  * NORMAL
-  * HIGH
-* Priority aging to reduce starvation
-* Fiber joining and synchronization
-* Blocking and unblocking of fibers
-* Circular dependency deadlock detection
-* Runtime scheduler statistics
-* Fiber state inspection
-* Dynamic fiber creation through an interactive application
-* Maximum fiber limit
-* Extensive validation tests
+<p align="center">
+  <img src="https://img.shields.io/badge/Language-C-A8B9CC?style=for-the-badge&logo=c&logoColor=white" alt="C Language" />
+  <img src="https://img.shields.io/badge/Platform-Linux%20%2F%20Unix-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux and Unix" />
+  <img src="https://img.shields.io/badge/Context-ucontext-blue?style=for-the-badge" alt="ucontext" />
+  <img src="https://img.shields.io/badge/Tests-14%20test%20programs-success?style=for-the-badge" alt="14 test programs" />
+</p>
 
 ---
 
-## Project Architecture
+## 🚀 What is FiberLib?
+
+**FiberLib is an educational user-level threading library that demonstrates how multiple independent execution flows can be managed inside a single process.**
+
+Instead of relying on the operating system to schedule each thread individually, FiberLib creates lightweight *fibers* and manages their execution using its own scheduler.
+
+Each fiber has its own stack, execution context, state, priority, and scheduling statistics. The library switches between fibers using the POSIX `ucontext` mechanism and lets the scheduler decide which READY fiber should execute next.
+
+The result is a small, hands-on model of concurrency and scheduling that makes important operating-system concepts easier to understand through actual code.
+
+### 💡 The central idea
+
+**Don't just use a threading library. Build one and understand what happens underneath.**
+
+---
+
+## ✨ Features at a glance
+
+| Feature                     | What it does                                                |
+| --------------------------- | ----------------------------------------------------------- |
+| 🧵 User-level fibers        | Runs multiple execution flows inside one process            |
+| 💾 Independent stacks       | Gives each fiber its own execution stack                    |
+| 🔄 Context switching        | Saves and restores execution contexts using `ucontext`      |
+| ⚖️ Round-Robin scheduling   | Selects READY fibers in cyclic order                        |
+| 🎯 Priority scheduling      | Favors fibers with higher effective priority                |
+| 📈 Priority aging           | Helps prevent low-priority fibers from starving             |
+| ⏳ Yielding and joining      | Supports cooperative yielding and waiting for another fiber |
+| 🔍 Deadlock detection       | Detects circular wait dependencies                          |
+| 📊 Runtime statistics       | Tracks dispatches, yields, switches, and completed fibers   |
+| 🧾 Event tracing            | Records scheduler events for inspection                     |
+| 🖥️ Live dashboard          | Displays fiber states and scheduler activity                |
+| 🧪 Automated tests          | Tests lifecycle handling, scheduling, joins, and edge cases |
+| 🛠️ Interactive application | Brings demonstrations and diagnostics together in a menu    |
+
+---
+
+## 🏗️ How FiberLib works
+
+A conventional operating system schedules kernel-managed threads. FiberLib instead manages multiple fibers within one process using a user-space scheduler.
+
+```text
+                    FIBERLIB APPLICATION
+                            |
+                            v
+                    +----------------+
+                    |  Fiber Library |
+                    +----------------+
+                            |
+                            v
+                    +----------------+
+                    | User-Space     |
+                    | Scheduler      |
+                    +----------------+
+                            |
+              +-------------+-------------+
+              |             |             |
+              v             v             v
+        +-----------+ +-----------+ +-----------+
+        | Fiber A   | | Fiber B   | | Fiber C   |
+        | Own stack | | Own stack | | Own stack |
+        | Context   | | Context   | | Context   |
+        +-----------+ +-----------+ +-----------+
+              |             |             |
+              +-------------+-------------+
+                            |
+                  Cooperative yielding
+                  and context switching
+                            |
+                            v
+                    Scheduler resumes
+                    another READY fiber
+```
+
+### The lifecycle of a fiber
+
+```text
+       Creation
+          |
+          v
+        READY <------------------+
+          |                      |
+          v                      |
+       RUNNING ---- yield -------+
+          |
+          +------ join/wait ----> BLOCKED
+          |                         |
+          |                         | Target completes
+          |                         v
+          |                       READY
+          |
+          v
+        ZOMBIE
+```
+
+The scheduler uses four principal states:
+
+* **READY** — the fiber is eligible to execute.
+* **RUNNING** — the fiber currently executing.
+* **BLOCKED** — the fiber is waiting for another fiber to finish.
+* **ZOMBIE** — the fiber's function has completed.
+
+The library uses these states to determine which fibers are eligible for scheduling and which are waiting for completion.
+
+---
+
+## ⚙️ Scheduling systems
+
+One of FiberLib's main features is the ability to compare two scheduling strategies.
+
+### 1. Round-Robin scheduling
+
+Round-Robin gives READY fibers turns in cyclic order.
+
+For three fibers, the execution order can look like this:
+
+```text
+Fiber A → Fiber B → Fiber C
+    ↑                    |
+    +--------------------+
+```
+
+**Why it matters:** Round-Robin demonstrates fair cyclic selection without using priority to choose the next fiber.
+
+### 2. Priority + Aging scheduling
+
+FiberLib also supports three priority levels:
+
+* `LOW`
+* `NORMAL`
+* `HIGH`
+
+The scheduler considers a fiber's effective priority when choosing which READY fiber to run. When effective priorities are equal, cyclic scan order helps determine the selection.
+
+However, strict priority scheduling can cause starvation: a low-priority fiber might wait too long while higher-priority fibers keep getting selected.
+
+FiberLib addresses this with **priority aging**. Waiting READY fibers gradually gain an aging advantage, and their effective priority increases up to the HIGH level.
+
+Example from the starvation test:
+
+| Fiber               | Configured priority | Execution opportunities |
+| ------------------- | ------------------- | ----------------------: |
+| High-priority fiber | HIGH                |                      15 |
+| Low-priority fiber  | LOW                 |                       5 |
+
+The low-priority fiber still receives execution opportunities despite competing with a high-priority fiber.
+
+**Why it matters:** This demonstrates the trade-off between priority-based responsiveness and giving waiting fibers a chance to execute.
+
+---
+
+## 🔄 Context switching: the heart of FiberLib
+
+A fiber must be able to pause its execution and resume later from the same point.
+
+FiberLib uses the POSIX `ucontext` API to manage execution contexts.
+
+Conceptually, a context switch works like this:
+
+1. A fiber begins executing.
+2. It calls `fiber_yield()` to voluntarily give up execution.
+3. Its current context is saved.
+4. Control returns to the scheduler.
+5. The scheduler selects another READY fiber.
+6. The selected fiber's context is restored.
+
+This is **cooperative scheduling**: fibers normally need to yield or reach another scheduling operation before the scheduler can run a different fiber.
+
+Each fiber has its own stack, with a default size of **64 KiB**.
+
+---
+
+## ⏳ Fiber joining and deadlock detection
+
+FiberLib supports `fiber_join()`, allowing one fiber to wait for another fiber to complete.
+
+For example:
+
+```text
+Fiber A ---- waits for ----> Fiber B
+                                  |
+                                  v
+                           Fiber B completes
+                                  |
+                                  v
+                          Fiber A becomes READY
+```
+
+The library can also detect circular waiting dependencies.
+
+Consider this situation:
+
+```text
+Fiber A waits for Fiber B
+       ^              |
+       |              v
+       +-------- Fiber A
+```
+
+Neither fiber can make progress while the circular dependency remains unresolved.
+
+FiberLib checks wait dependencies and reports detected deadlocks, making this operating-system concept observable in a small, reproducible program.
+
+The test suite includes a dedicated circular-join demonstration.
+
+---
+
+## 📊 Scheduler dashboard and event tracing
+
+FiberLib is designed to make scheduling behavior observable, not just executable.
+
+### Live scheduler dashboard
+
+The interactive scheduler dashboard provides a view of:
+
+* Fiber IDs and execution states
+* Configured priorities
+* Dispatch and yield counts
+* Aging information
+* Scheduler totals
+* Completed fibers
+* Event-trace information
+
+The dashboard also offers menu options to inspect the complete event trace and library statistics.
+
+### Event tracing
+
+FiberLib records scheduler events such as:
+
+* `DISPATCH`
+* `YIELD`
+* `BLOCK`
+* `RESUME`
+* `COMPLETE`
+* `PRIORITY_CHANGE`
+* `CONTEXT_SWITCH`
+
+Each event can include a sequence number, fiber identity, state, priority, and relevant counters.
+
+This makes it easier to investigate execution order and understand how the scheduler responds to fiber operations.
+
+### Runtime statistics
+
+The library tracks information including:
+
+* Total dispatches
+* Total yield calls
+* Total context switches
+* Completed fibers
+* Active fibers
+
+It also provides fiber snapshots for inspecting an individual fiber's current state and accumulated counters.
+
+**Why this is useful:** The dashboard and trace system turn invisible execution decisions into information you can inspect while learning how scheduling works.
+
+---
+
+## 🧪 Testing and reliability
+
+FiberLib includes 14 test programs covering core behavior and important edge cases.
+
+The test suite covers:
+
+* Library initialization and shutdown
+* Invalid priority values
+* Invalid fiber creation
+* Self-join rejection
+* Invalid fiber IDs
+* Use before initialization
+* Double initialization and shutdown
+* Joining completed fibers
+* Circular-join deadlock detection
+* Maximum fiber capacity
+* Starvation prevention
+* Round-Robin execution order
+* Fiber snapshot behavior
+
+The configured maximum is **128 fibers**.
+
+The complete build and test command was run successfully, with all 14 test programs passing and no compiler warnings or errors reported.
+
+Run the tests yourself to verify the current checkout.
+
+---
+
+## 🛠️ Getting started
+
+### Requirements
+
+* A Linux or compatible Unix-like development environment
+* GCC or a compatible C compiler
+* GNU Make
+* Support for the POSIX `ucontext` API
+
+> **Compatibility note:** `ucontext` is obsolete in POSIX.1-2008 and is not available on every modern platform. This project is intended primarily for educational use in compatible Unix-like environments.
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/jaideep072/FiberLib.git
+cd FiberLib
+```
+
+### 2. Build the project
+
+```bash
+make
+```
+
+### 3. Run the interactive application
+
+```bash
+./fiberlib
+```
+
+Use the application menu to explore fiber creation, scheduling demonstrations, diagnostics, and the live scheduler dashboard.
+
+### 4. Run the automated tests
+
+```bash
+make test
+```
+
+### 5. Clean generated build files
+
+```bash
+make clean
+```
+
+---
+
+## 📁 Project structure
 
 ```text
 FiberLib/
-├── Makefile
-├── README.md
-├── main.c
-│
 ├── include/
 │   └── fiber.h
-│
 ├── src/
 │   └── fiber.c
-│
 ├── examples/
 │   ├── create_demo.c
 │   ├── round_robin_demo.c
 │   ├── priority_demo.c
 │   ├── join_demo.c
-│   └── fiber_monitor.c
-│
-└── tests/
-    ├── test_init.c
-    ├── test_priority.c
-    ├── test_invalid_create.c
-    ├── test_self_join.c
-    ├── test_invalid_join.c
-    ├── test_uninitialized.c
-    ├── test_double_init.c
-    ├── test_double_shutdown.c
-    ├── test_join_completed.c
-    ├── test_deadlock.c
-    ├── test_max_fibers.c
-    └── test_starvation.c
+│   ├── fiber_monitor.c
+│   ├── trace_demo.c
+│   └── scheduler_dashboard.c
+├── tests/
+│   ├── test_init.c
+│   ├── test_priority.c
+│   ├── test_invalid_create.c
+│   ├── test_self_join.c
+│   ├── test_invalid_join.c
+│   ├── test_uninitialized.c
+│   ├── test_double_init.c
+│   ├── test_double_shutdown.c
+│   ├── test_join_completed.c
+│   ├── test_deadlock.c
+│   ├── test_max_fibers.c
+│   ├── test_starvation.c
+│   ├── test_round_robin.c
+│   └── test_snapshot.c
+├── main.c
+├── Makefile
+└── README.md
 ```
+
+* **`include/fiber.h`** — public types and API declarations.
+* **`src/fiber.c`** — fiber lifecycle, contexts, scheduler, joining, statistics, and tracing.
+* **`examples/`** — demonstrations and interactive monitoring tools.
+* **`tests/`** — automated tests for behavior and edge cases.
+* **`main.c`** — interactive application entry point.
+* **`Makefile`** — build, test, and clean targets.
 
 ---
 
-# How to Build
+## 🎓 Operating-system concepts demonstrated
 
-## Requirements
+FiberLib brings several theoretical concepts into one practical project:
 
-* Ubuntu/Linux
-* GCC
-* GNU Make
-* POSIX `ucontext` support
-* Standard C library
+| Concept                     | How the project demonstrates it                     |
+| --------------------------- | --------------------------------------------------- |
+| Execution contexts          | Saving and restoring fiber contexts                 |
+| Stack management            | Allocating a separate stack per fiber               |
+| CPU scheduling              | Selecting the next READY fiber                      |
+| Scheduling fairness         | Cyclic Round-Robin selection                        |
+| Priority scheduling         | Choosing fibers by effective priority               |
+| Starvation prevention       | Increasing the effective priority of waiting fibers |
+| Synchronization and waiting | Cooperative scheduling and join demonstrations      |
+| Deadlocks                   | Detecting circular wait dependencies                |
+| Observability               | Runtime statistics, snapshots, and event traces     |
 
-Check GCC:
-
-```bash
-gcc --version
-```
-
-Check Make:
-
-```bash
-make --version
-```
+The central learning outcome is understanding how concurrency can be managed in user space and how scheduler design influences execution order.
 
 ---
 
-## Build the Complete Project
+## ⚠️ Design choices and limitations
 
-From the project root:
+FiberLib is an educational implementation, not a replacement for production threading libraries.
 
-```bash
-make
-```
+* **Cooperative execution:** A fiber that never yields can prevent other fibers from running.
+* **Single-process scheduling:** The library manages fibers inside one process; fibers are not independently scheduled kernel threads.
+* **No automatic preemption:** The scheduler does not forcibly interrupt a running fiber on a timer.
+* **Platform dependence:** The implementation relies on `ucontext`, which has limited portability.
+* **Single execution thread:** The scheduler is designed for cooperative execution rather than parallel execution across CPU cores.
 
-This builds:
-
-* `fiberlib` main application
-* FiberLib object file
-* all example programs
-* all test programs
-
-A clean rebuild can be performed with:
-
-```bash
-make clean && make
-```
+These limitations are intentional learning opportunities: they help distinguish user-level scheduling from kernel-managed threading and preemptive multitasking.
 
 ---
 
-# Main Application
+## 🔮 Future enhancements
 
-The primary way to demonstrate FiberLib is through:
+Potential extensions include:
 
-```bash
-./fiberlib
-```
-
-The application provides an interactive menu:
-
-```text
-===============================================
-                 FiberLib
-          User-Level Thread Library
-===============================================
-1. Run FiberLib Application
-2. Create Custom Fiber
-3. Show Library Features
-4. Exit
-===============================================
-```
+* Timer-based preemptive scheduling
+* Semaphores and condition variables
+* More scheduling algorithms
+* Improved stack management
+* Expanded deadlock and error-path tests
+* A graphical scheduler visualizer
+* Hybrid user-level and kernel-level scheduling
 
 ---
 
-## Option 1 — Run FiberLib Application
+## 💭 Project philosophy
 
-Select:
+FiberLib is built around a simple idea:
 
-```text
-1
-```
+> **Understanding systems begins when you stop treating them as black boxes.**
 
-This launches an application-style demonstration containing:
+Instead of only calling an existing threading API, this project explores the mechanics behind fiber creation, execution contexts, scheduling decisions, waiting, and runtime observability.
 
-* Network Monitor
-* Report Generator
-* Log Collector
-
-The demonstration shows:
-
-* Fiber creation
-* Fiber priorities
-* Cooperative execution
-* Scheduler operation
-* Fiber yielding
-* `fiber_join()`
-* Blocking
-* Unblocking
-* Fiber completion
-* Runtime statistics
-
-The important synchronization sequence is:
-
-```text
-[Report Generator] Waiting for network monitor...
-[FiberLib] Fiber 3 is waiting for fiber 1.
-```
-
-Later:
-
-```text
-[FiberLib] Fiber 1 completed execution.
-[FiberLib] Fiber 3 unblocked after fiber 1 finished.
-```
-
-This demonstrates fiber synchronization using `fiber_join()`.
+It is a practical exercise in turning operating-system theory into a working C implementation.
 
 ---
 
-# Option 2 — Create a Custom Fiber
+## 👨‍💻 Author
 
-Select:
+**Jaideep**
 
-```text
-2
-```
+Explore the source code, run the demonstrations, and inspect the scheduler's behavior:
 
-The application asks for:
-
-```text
-Enter number of work steps (1-10):
-```
-
-Then:
-
-```text
-Select priority:
-1. LOW
-2. NORMAL
-3. HIGH
-```
-
-The application dynamically creates a fiber using:
-
-```c
-fiber_create()
-```
-
-and applies the selected priority using:
-
-```c
-fiber_set_priority()
-```
-
-The fiber is then executed by the FiberLib scheduler.
-
-This demonstrates that applications can dynamically create and execute their own user-level fibers.
+**[View FiberLib on GitHub →](https://github.com/jaideep072/FiberLib)**
 
 ---
 
-# Option 3 — Show Library Features
-
-Select:
-
-```text
-3
-```
-
-This displays the major capabilities of FiberLib, including:
-
-* User-level fibers
-* Cooperative scheduling
-* Priority scheduling
-* Round-Robin scheduling
-* Priority aging
-* Fiber joining
-* Deadlock detection
-* Runtime statistics
-* Dynamic fiber creation
-
----
-
-# Running Individual Examples
-
-The `examples/` directory contains focused demonstrations of individual FiberLib features.
-
-## 1. Fiber Creation
-
-```bash
-./examples/create_demo
-```
-
-Demonstrates:
-
-* Library initialization
-* Fiber creation
-* Fiber state inspection
-* Scheduler execution
-* Fiber completion
-* Library shutdown
-
----
-
-## 2. Round-Robin Scheduling
-
-```bash
-./examples/round_robin_demo
-```
-
-Demonstrates cooperative Round-Robin scheduling using multiple fibers.
-
-Typical execution:
-
-```text
-[Fiber A] Step 1
-[Fiber B] Step 1
-[Fiber C] Step 1
-
-[Fiber A] Step 2
-[Fiber B] Step 2
-[Fiber C] Step 2
-```
-
----
-
-## 3. Priority Scheduling
-
-```bash
-./examples/priority_demo
-```
-
-Demonstrates:
-
-* LOW priority
-* NORMAL priority
-* HIGH priority
-* Priority-aware scheduling
-
----
-
-## 4. Fiber Join
-
-```bash
-./examples/join_demo
-```
-
-Demonstrates one fiber waiting for another fiber to complete using:
-
-```c
-fiber_join()
-```
-
----
-
-## 5. FiberMonitor Application Example
-
-```bash
-./examples/fiber_monitor
-```
-
-This is an application-style example containing:
-
-* Network monitoring
-* Log collection
-* Report generation
-
-It demonstrates FiberLib in a simulated real-world workload.
-
----
-
-# Running Tests
-
-All tests can be executed together using:
-
-```bash
-make test
-```
-
-The Makefile executes every test sequentially.
-
----
-
-## Run Individual Tests
-
-### Initialization
-
-```bash
-./tests/test_init
-```
-
-Tests FiberLib initialization.
-
-### Priority
-
-```bash
-./tests/test_priority
-```
-
-Tests fiber priority assignment.
-
-### Invalid Fiber Creation
-
-```bash
-./tests/test_invalid_create
-```
-
-Tests invalid fiber creation scenarios.
-
-### Self Join
-
-```bash
-./tests/test_self_join
-```
-
-Tests prevention of a fiber joining itself.
-
-### Invalid Join
-
-```bash
-./tests/test_invalid_join
-```
-
-Tests invalid fiber join operations.
-
-### Uninitialized Library
-
-```bash
-./tests/test_uninitialized
-```
-
-Tests API behavior before library initialization.
-
-### Double Initialization
-
-```bash
-./tests/test_double_init
-```
-
-Tests repeated library initialization.
-
-### Double Shutdown
-
-```bash
-./tests/test_double_shutdown
-```
-
-Tests repeated library shutdown.
-
-### Join Completed Fiber
-
-```bash
-./tests/test_join_completed
-```
-
-Tests joining a fiber that has already completed.
-
-### Deadlock Detection
-
-```bash
-./tests/test_deadlock
-```
-
-Demonstrates circular fiber dependencies and deadlock detection.
-
-Example dependency:
-
-```text
-Fiber A → waits for Fiber B
-Fiber B → waits for Fiber A
-```
-
-FiberLib detects the circular dependency.
-
-### Maximum Fiber Limit
-
-```bash
-./tests/test_max_fibers
-```
-
-Tests the maximum number of supported fibers.
-
-Current limit:
-
-```text
-128 fibers
-```
-
-### Starvation Prevention
-
-```bash
-./tests/test_starvation
-```
-
-Tests priority aging and verifies that lower-priority fibers still receive CPU time.
-
----
-
-# Useful Make Commands
-
-## Build Everything
-
-```bash
-make
-```
-
-## Clean Build Files
-
-```bash
-make clean
-```
-
-## Rebuild Everything
-
-```bash
-make clean && make
-```
-
-## Build Examples
-
-```bash
-make examples
-```
-
-## Build Tests
-
-```bash
-make tests
-```
-
-## Run All Tests
-
-```bash
-make test
-```
-
----
-
-# FiberLib API
-
-The public API is defined in:
-
-```text
-include/fiber.h
-```
-
-### Initialization
-
-```c
-int fiber_library_init(void);
-```
-
-Initializes the FiberLib runtime.
-
-### Shutdown
-
-```c
-void fiber_library_shutdown(void);
-```
-
-Releases FiberLib resources.
-
-### Fiber Creation
-
-```c
-fiber_id_t fiber_create(
-    fiber_function_t function,
-    void *arg
-);
-```
-
-Creates a new user-level fiber.
-
-### Priority
-
-```c
-int fiber_set_priority(
-    fiber_id_t fiber_id,
-    fiber_priority_t priority
-);
-```
-
-Sets LOW, NORMAL, or HIGH priority.
-
-### Scheduling
-
-```c
-void fiber_schedule(void);
-```
-
-Starts the user-level scheduler.
-
-### Yield
-
-```c
-void fiber_yield(void);
-```
-
-Allows the current fiber to voluntarily return control to the scheduler.
-
-### Join
-
-```c
-int fiber_join(fiber_id_t fiber_id);
-```
-
-Waits for another fiber to finish.
-
-### Debugging
-
-```c
-void fiber_debug_dump(void);
-```
-
-Displays the current state of active fibers.
-
-### Statistics
-
-```c
-void fiber_stats_dump(void);
-```
-
-Displays scheduler statistics.
-
-### Deadlock Detection
-
-```c
-int fiber_deadlock_detected(void);
-```
-
-Reports whether a deadlock was detected.
-
----
-
-# Fiber States
-
-Each fiber can exist in one of the following states:
-
-```text
-READY
-RUNNING
-BLOCKED
-ZOMBIE
-```
-
-### READY
-
-The fiber is ready to execute.
-
-### RUNNING
-
-The fiber is currently executing.
-
-### BLOCKED
-
-The fiber is waiting for another fiber.
-
-### ZOMBIE
-
-The fiber has completed execution and is waiting for cleanup.
-
----
-
-# Scheduling Design
-
-FiberLib uses **cooperative user-level scheduling**.
-
-A fiber voluntarily gives control back to the scheduler by calling:
-
-```c
-fiber_yield();
-```
-
-The scheduler then selects another READY fiber.
-
-The scheduler considers:
-
-1. Fiber state
-2. Priority
-3. Aging
-4. Scheduler cursor
-
-This allows FiberLib to demonstrate several operating-system scheduling concepts in user space.
-
----
-
-# Priority Aging
-
-FiberLib supports three priorities:
-
-```text
-LOW       = 1
-NORMAL    = 2
-HIGH      = 3
-```
-
-Aging increases the effective scheduling priority of fibers that have waited for multiple scheduling opportunities.
-
-This helps prevent starvation of lower-priority fibers.
-
----
-
-# Synchronization
-
-FiberLib provides:
-
-```c
-fiber_join()
-```
-
-A fiber can wait for another fiber to finish.
-
-Example:
-
-```text
-Report Generator
-       |
-       | waits for
-       v
-Network Monitor
-```
-
-The waiting fiber enters:
-
-```text
-BLOCKED
-```
-
-When the target fiber completes, the waiting fiber becomes:
-
-```text
-READY
-```
-
-and continues execution.
-
----
-
-# Deadlock Detection
-
-FiberLib detects circular dependencies between blocked fibers.
-
-Example:
-
-```text
-Fiber A
-   |
-   | waits for
-   v
-Fiber B
-   |
-   | waits for
-   v
-Fiber A
-```
-
-This creates a cycle.
-
-FiberLib detects the cycle and reports a deadlock.
-
----
-
-# Runtime Statistics
-
-FiberLib tracks:
-
-```text
-Total dispatches
-Total yield calls
-Total context switches
-Total completed fibers
-Currently active fibers
-```
-
-These statistics can be displayed using:
-
-```c
-fiber_stats_dump();
-```
-
----
-
-# Testing
-
-The project contains tests covering:
-
-* Initialization
-* Shutdown
-* Fiber creation
-* Priority assignment
-* Invalid operations
-* Self-join prevention
-* Fiber joining
-* Deadlock detection
-* Maximum fiber capacity
-* Starvation prevention
-* Scheduler behavior
-
-Run the complete test suite with:
-
-```bash
-make test
-```
-
----
-
-# Limitations
-
-FiberLib is an educational user-level threading library.
-
-Current limitations include:
-
-* Cooperative scheduling only
-* No preemptive timer-based scheduling
-* POSIX `ucontext` dependency
-* Fibers execute within a single operating-system process/thread
-* No kernel-level parallel execution
-* Fixed maximum fiber capacity
-* Fixed fiber stack size
-
-The project is intended to demonstrate operating-system concepts rather than replace production threading libraries such as POSIX pthreads.
-
----
-
-# Design Goals
-
-The main goals of FiberLib are to demonstrate:
-
-* User-level thread management
-* Context switching
-* Scheduling algorithms
-* Synchronization
-* Blocking and unblocking
-* Deadlock detection
-* Starvation prevention
-* Resource management
-* Operating-system concepts through a practical C implementation
-
----
-
-# Quick Evaluation Commands
-
-For a quick project demonstration:
-
-### 1. Build
-
-```bash
-make clean && make
-```
-
-### 2. Run the main application
-
-```bash
-./fiberlib
-```
-
-### 3. Run Round-Robin demonstration
-
-```bash
-./examples/round_robin_demo
-```
-
-### 4. Run priority demonstration
-
-```bash
-./examples/priority_demo
-```
-
-### 5. Run join demonstration
-
-```bash
-./examples/join_demo
-```
-
-### 6. Demonstrate deadlock detection
-
-```bash
-./tests/test_deadlock
-```
-
-### 7. Demonstrate starvation prevention
-
-```bash
-./tests/test_starvation
-```
-
-### 8. Run complete test suite
-
-```bash
-make test
-```
-
----
-
-# Cleaning the Project
-
-To remove generated object files and executables:
-
-```bash
-make clean
-```
-
-After cleaning, rebuild the project using:
-
-```bash
-make
-```
-
----
-
-# License
-
-This project is developed as an academic operating-systems project for demonstrating user-level thread and scheduling concepts.
+<p align="center">
+  <strong>FiberLib — Small fibers. Big systems concepts.</strong>
+</p>
